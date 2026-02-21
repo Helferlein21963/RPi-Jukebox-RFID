@@ -149,10 +149,10 @@ _optimize_check() {
     local configFile=$(get_boot_config_path)
 
 
-    verify_optional_service_enablement keyboard-setup.service disabled
-    verify_optional_service_enablement triggerhappy.service disabled
-    verify_optional_service_enablement triggerhappy.socket disabled
-    verify_optional_service_enablement raspi-config.service disabled
+    # verify_optional_service_enablement keyboard-setup.service disabled
+    # verify_optional_service_enablement triggerhappy.service disabled
+    # verify_optional_service_enablement triggerhappy.socket disabled
+    # verify_optional_service_enablement raspi-config.service disabled
     verify_optional_service_enablement apt-daily.service disabled
     verify_optional_service_enablement apt-daily-upgrade.service disabled
     verify_optional_service_enablement apt-daily.timer disabled
