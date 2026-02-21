@@ -11,7 +11,7 @@
 export LC_ALL=C
 
 # Set Repo variables if not specified when calling the script
-GIT_USER=${GIT_USER:-"MiczFlor"}
+GIT_USER=${GIT_USER:-"Helferlein21963"}
 GIT_BRANCH=${GIT_BRANCH:-"future3/main"}
 
 # Constants
