@@ -9,15 +9,15 @@ OPTIMIZE_DHCP_CONF_HEADER="## Jukebox DHCP Config"
 OPTIMIZE_BOOT_CONF_HEADER="## Jukebox Boot Config"
 
 _optimize_disable_irrelevant_services() {
-  log "  Disable keyboard-setup.service"
-  sudo systemctl disable keyboard-setup.service
+#   log "  Disable keyboard-setup.service"
+#   sudo systemctl disable keyboard-setup.service
 
-  log "  Disable triggerhappy.service"
-  sudo systemctl disable triggerhappy.service
-  sudo systemctl disable triggerhappy.socket
+#   log "  Disable triggerhappy.service"
+#   sudo systemctl disable triggerhappy.service
+#   sudo systemctl disable triggerhappy.socket
 
-  log "  Disable raspi-config.service"
-  sudo systemctl disable raspi-config.service
+#   log "  Disable raspi-config.service"
+#   sudo systemctl disable raspi-config.service
 
   log "  Disable apt-daily.service & apt-daily-upgrade.service"
   sudo systemctl disable apt-daily.service
