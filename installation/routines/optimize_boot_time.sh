@@ -48,7 +48,7 @@ EOF
 _optimize_handle_bluetooth() {
   if [ "$DISABLE_BLUETOOTH" = true ] ; then
     print_lc "  Disable bluetooth"
-    sudo systemctl disable hciuart.service
+    # sudo systemctl disable hciuart.service
     sudo systemctl disable bluetooth.service
   fi
 }
@@ -159,7 +159,7 @@ _optimize_check() {
     verify_optional_service_enablement apt-daily-upgrade.timer disabled
 
     if [ "$DISABLE_BLUETOOTH" = true ] ; then
-        verify_optional_service_enablement hciuart.service disabled
+        # verify_optional_service_enablement hciuart.service disabled
         verify_optional_service_enablement bluetooth.service disabled
     fi
 
