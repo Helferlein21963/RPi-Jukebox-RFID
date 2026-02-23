@@ -177,7 +177,7 @@ class ReaderRunner(threading.Thread):
                     player_state = plugs.call_ignore_errors('player', 'ctrl', 'state')
                     is_active = (player_state is not None and player_state.get('PLAYSTATUS', '') in ('play', 'pause'))
 
-                    if is_same_card and is_within_delay and is_active:
+                    if is_same_card and is_active:
                         self._logger.info(f"Second swipe detected for card id = '{card_id}' → toggling playback")
                         plugs.call_ignore_errors('player', 'ctrl', 'toggle')
                         previous_time = time.time()
