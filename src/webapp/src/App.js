@@ -16,6 +16,11 @@ function App() {
           direction="row"
           id="routes"
           justifyContent="center"
+          sx={{
+            width: '100%',
+            maxWidth: '100vw',
+            overflowX: 'hidden',
+          }}
         >
           <Router />
         </Grid>

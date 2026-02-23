@@ -40,14 +40,16 @@ const CardsOverview = () => {
   }, []);
 
   return (
-    <Grid container id="cards">
+    <Grid container id="cards" sx={{ width: '100%', overflow: 'hidden' }}>
       <Header title={t('cards.overview.cards')} />
       <Grid
         container
-        spacing={1}
+        spacing={0}
         sx={{
           display: 'flex',
           justifyContent: 'center',
+          width: '100%',
+          boxSizing: 'border-box',
         }}
       >
         {isLoading

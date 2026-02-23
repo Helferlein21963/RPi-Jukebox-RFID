@@ -16,7 +16,7 @@ const Cards = () => {
       container
       id="library"
       sx={{
-        padding: '10px',
+        padding: { xs: '5px', sm: '10px', md: '10px' },
         width: '100%',
         boxSizing: 'border-box',
         overflowX: 'hidden',
