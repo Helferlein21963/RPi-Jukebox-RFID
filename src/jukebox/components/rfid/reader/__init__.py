@@ -172,14 +172,16 @@ class ReaderRunner(threading.Thread):
                         self._timer_thread.trigger.set()
 
 
-                        is_same_card = (card_id == previous_id)
+                    is_same_card = (card_id == previous_id)
+                    is_within_delay = (time.time() - previous_time) < self._cfg_same_id_delay
+                    player_state = plugs.call_ignore_errors('player', 'ctrl', 'state')
+                    is_active = (player_state is not None and player_state.get('PLAYSTATUS', '') in ('play', 'pause'))
 
-                        if is_same_card:
-                            self._logger.info(f"Second swipe detected for card id = '{card_id}' → toggle or replay")
-                            plugs.call_ignore_errors('player', 'ctrl', 'toggle')
-                            plugs.call_ignore_errors('player', 'ctrl', 'replay_if_stopped')
-                            previous_time = time.time()
-                        elif not is_same_card:
+                    if is_same_card and is_within_delay and is_active:
+                        self._logger.info(f"Second swipe detected for card id = '{card_id}' → toggling playback")
+                        plugs.call_ignore_errors('player', 'ctrl', 'toggle')
+                        previous_time = time.time()
+                    elif not is_same_card or not is_within_delay:
                         # (2) Log this: do this first to provide log entry in case something does not run 
                         previous_id = card_id
                         valid_for_removal_action = False
