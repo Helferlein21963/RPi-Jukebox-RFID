@@ -17,6 +17,9 @@ const Cards = () => {
       id="library"
       sx={{
         padding: '10px',
+        width: '100%',
+        boxSizing: 'border-box',
+        overflowX: 'hidden',
       }}
     >
       <Routes>

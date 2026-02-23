@@ -64,8 +64,9 @@ const CardsOverview = () => {
         onClick={openRegisterCard}
         sx={{
           position: 'fixed',
-          bottom: '76px',
-          right: theme.spacing(2),
+          bottom: { xs: '76px', sm: '76px', md: '76px' },
+          right: { xs: theme.spacing(1), sm: theme.spacing(2), md: theme.spacing(2) },
+          zIndex: 1000,
         }}
       >
         <AddIcon />

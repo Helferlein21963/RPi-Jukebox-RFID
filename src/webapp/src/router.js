@@ -14,9 +14,12 @@ const Router = () => {
     <HashRouter>
       <Grid
         item xs={12}
+        sm={12}
         md={6}
         sx={{
           marginBottom: '64px',
+          maxWidth: '100%',
+          overflow: 'hidden',
         }}
       >
         <Routes>
