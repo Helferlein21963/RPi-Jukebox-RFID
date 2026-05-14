@@ -173,8 +173,10 @@ class ReaderRunner(threading.Thread):
 
 
                     is_same_card = (card_id == previous_id)
+                    elapsed = time.time() - previous_time
+                    is_within_delay = elapsed < self._cfg_same_id_delay
 
-                    if is_same_card:
+                    if is_same_card and not is_within_delay:
                         self._logger.info(f"Second swipe detected for card id = '{card_id}' → toggle or replay")
                         plugs.call_ignore_errors('player', 'ctrl', 'toggle')
                         plugs.call_ignore_errors('player', 'ctrl', 'replay_if_stopped')
