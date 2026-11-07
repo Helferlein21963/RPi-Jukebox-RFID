@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { findIndex, propEq } from 'ramda';
 
 import {
   CircularProgress,
@@ -45,9 +44,10 @@ const Outputs = () => {
         return console.error(error);
       }
 
-      const activeSinkIndex = findIndex(
-        propEq('pulse_sink_name', active_sink)
-      )(sink_list);
+      // Plain JS instead of ramda's propEq, whose argument order changed in ramda 0.29
+      const activeSinkIndex = sink_list.findIndex(
+        ({ pulse_sink_name }) => pulse_sink_name === active_sink
+      );
 
       setActiveSink(activeSinkIndex);
       setSinkList(sink_list);
