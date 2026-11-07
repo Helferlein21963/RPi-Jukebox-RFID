@@ -87,6 +87,7 @@ import threading
 import logging
 import time
 import functools
+from typing import Optional
 from slugify import slugify
 import components.player
 import jukebox.cfghandler
@@ -430,23 +431,100 @@ class PlayerMPD:
         with self.mpd_lock:
             self.mpd_client.pause(state)
 
+    def _select_song_when_stopped(self, step: int, restart_threshold: Optional[float] = None) -> bool:
+        """
+        When stopped, select the next / previous song without playing it (like a conventional player)
+
+        MPD cannot select a song without playing it. So the selection is stored as remembered position of the
+        current folder, where :meth:`toggle` starts playing.
+
+        :param step: +1 for the next song, -1 for the previous song
+        :param restart_threshold: If the remembered position is at least this far into the song, select the start
+            of this song instead of the previous one
+        :return: False if not stopped, i.e. nothing done
+        """
+        if self.mpd_client.status().get('state') != 'stop':
+            return False
+        files = [song['file'] for song in self.mpd_client.playlistinfo()]
+        if not files:
+            logger.debug("Stopped with empty playlist: nothing to select")
+            return True
+        filename = self.current_folder_status.get('CURRENTFILENAME')
+        if filename in files:
+            index = files.index(filename)
+            elapsed = float(self.current_folder_status.get('ELAPSED') or 0)
+            if restart_threshold is not None and elapsed >= restart_threshold:
+                step = 0
+            index = min(max(index + step, 0), len(files) - 1)
+        else:
+            # Playlist has played to its end: next starts with the first, previous with the last song
+            index = 0 if step > 0 else len(files) - 1
+        self.current_folder_status["CURRENTFILENAME"] = files[index]
+        self.current_folder_status["CURRENTSONGPOS"] = str(index)
+        self.current_folder_status["ELAPSED"] = '0.0'
+        logger.debug(f"Stopped: selected song {index} '{files[index]}'")
+        return True
+
+    def _skip_while_paused(self, step: int, restart_threshold: Optional[float] = None) -> bool:
+        """
+        When paused, go to the start of the next / previous song and stay paused (like a conventional player)
+
+        MPD's next / previous always resume playback, but seeking while paused keeps the pause.
+
+        :param step: +1 for the next song, -1 for the previous song
+        :param restart_threshold: If the current song has played for at least this time, go to the start of this
+            song instead of the previous one
+        :return: False if not paused, i.e. nothing done
+        """
+        status = self.mpd_client.status()
+        if status.get('state') != 'pause':
+            return False
+        if status.get('random') == '1':
+            # The next song is decided by MPD
+            if step > 0:
+                self.mpd_client.next()
+            else:
+                self.mpd_client.previous()
+        else:
+            song = int(status.get('song', 0))
+            length = int(status.get('playlistlength', 1))
+            if restart_threshold is not None and float(status.get('elapsed', 0)) >= restart_threshold:
+                step = 0
+            index = song + step
+            if status.get('repeat') == '1':
+                index %= length
+            else:
+                index = min(max(index, 0), length - 1)
+            logger.debug(f"Paused: go to song {index}")
+            self.mpd_client.seek(index, 0)
+        if self.mpd_client.status().get('state') != 'pause':
+            self.mpd_client.pause(1)
+        return True
+
     @plugs.tag
     def prev(self):
+        """Play previous track in current playlist. When stopped or paused, only select it"""
         logger.debug("Prev")
         with self.mpd_lock:
-            self.mpd_client.previous()
+            if not (self._select_song_when_stopped(-1) or self._skip_while_paused(-1)):
+                self.mpd_client.previous()
 
     @plugs.tag
     def prev_or_restart_song(self, restart_threshold: float = 3.0):
         """
         Jump to the start of the current song, or to the previous song if pressed again shortly after (like a CD player)
 
+        When stopped or paused, only select the song and keep stopped / paused (see :meth:`toggle`).
+
         :param restart_threshold: If the current song has played for less than this time in seconds,
             go to the previous song instead of restarting the current one
         """
         with self.mpd_lock:
+            if (self._select_song_when_stopped(-1, restart_threshold)
+                    or self._skip_while_paused(-1, restart_threshold)):
+                return
             status = self.mpd_client.status()
-            if status.get('state') in ('play', 'pause') and float(status.get('elapsed', 0)) >= restart_threshold:
+            if float(status.get('elapsed', 0)) >= restart_threshold:
                 logger.debug("Restart song")
                 self.mpd_client.seekcur(0)
             else:
@@ -455,10 +533,11 @@ class PlayerMPD:
 
     @plugs.tag
     def next(self):
-        """Play next track in current playlist"""
+        """Play next track in current playlist. When stopped or paused, only select it"""
         logger.debug("Next")
         with self.mpd_lock:
-            self.mpd_client.next()
+            if not (self._select_song_when_stopped(+1) or self._skip_while_paused(+1)):
+                self.mpd_client.next()
 
     @plugs.tag
     def seek(self, new_time):
@@ -490,9 +569,19 @@ class PlayerMPD:
 
     @plugs.tag
     def toggle(self):
-        """Toggle pause state, i.e. do a pause / resume depending on current state"""
+        """
+        Toggle pause state, i.e. do a pause / resume depending on current state
+
+        When stopped, start playing the loaded playlist again: at the remembered position, which is the song
+        selected with next / prev while stopped, or where it was stopped. After the playlist has played to its end,
+        start with the first song.
+        """
         with self.mpd_lock:
-            self.mpd_client.pause()
+            if self.mpd_client.status().get('state') == 'stop':
+                if not self._seek_to_saved_position():
+                    self.mpd_client.play()
+            else:
+                self.mpd_client.pause()
 
     @plugs.tag
     def replay_if_stopped(self):

@@ -191,6 +191,155 @@ def test_play_folder_from_web_app_starts_with_first_song(player):
     player.mpd_client.play.assert_called_once_with()
 
 
+@pytest.mark.parametrize('state', ['play', 'pause'])
+def test_toggle_pauses_and_resumes(player, state):
+    player.mpd_client.status.return_value = {'state': state}
+
+    player.toggle()
+
+    player.mpd_client.pause.assert_called_once_with()
+    player.mpd_client.play.assert_not_called()
+
+
+def test_toggle_when_stopped_continues_at_saved_position(player):
+    player.mpd_client.status.return_value = {'state': 'stop'}
+    player.current_folder_status = player.music_player_status['audio_folder_status'][FOLDER_A]
+    player.mpd_client.playlistfind.return_value = [{'file': 'A/02.mp3', 'pos': '1'}]
+
+    player.toggle()
+
+    player.mpd_client.seek.assert_called_once_with('1', '42.5')
+    player.mpd_client.pause.assert_not_called()
+
+
+def test_toggle_when_stopped_without_position_plays(player):
+    player.mpd_client.status.return_value = {'state': 'stop'}
+
+    player.toggle()
+
+    player.mpd_client.seek.assert_not_called()
+    player.mpd_client.play.assert_called_once_with()
+
+
+PLAYLIST_A = [{'file': 'A/01.mp3'}, {'file': 'A/02.mp3'}, {'file': 'A/03.mp3'}]
+
+
+def stopped_at(player, filename=None, elapsed='0.0'):
+    """MPD is stopped with playlist A loaded; filename is the remembered song (None: playlist played to its end)"""
+    player.mpd_client.status.return_value = {'state': 'stop'}
+    player.mpd_client.playlistinfo.return_value = PLAYLIST_A
+    player.current_folder_status = {'CURRENTFILENAME': filename, 'ELAPSED': elapsed} if filename else {}
+    return player.current_folder_status
+
+
+@pytest.mark.parametrize('method, start, expected', [
+    ('next', 'A/02.mp3', 'A/03.mp3'),
+    ('next', 'A/03.mp3', 'A/03.mp3'),   # stays at the last song
+    ('next', None, 'A/01.mp3'),         # after the end of the playlist: first song
+    ('prev', 'A/02.mp3', 'A/01.mp3'),
+    ('prev', 'A/01.mp3', 'A/01.mp3'),   # stays at the first song
+    ('prev', None, 'A/03.mp3'),         # after the end of the playlist: last song
+])
+def test_next_prev_when_stopped_only_select_song(player, method, start, expected):
+    folder_status = stopped_at(player, start, elapsed='12.0')
+
+    getattr(player, method)()
+
+    assert folder_status['CURRENTFILENAME'] == expected
+    assert folder_status['ELAPSED'] == '0.0'
+    for mpd_call in ('next', 'previous', 'play', 'seek', 'seekcur'):
+        getattr(player.mpd_client, mpd_call).assert_not_called()
+
+
+@pytest.mark.parametrize('elapsed, expected', [
+    ('42.0', 'A/02.mp3'),   # stopped within the song: back to its start
+    ('0.0', 'A/01.mp3'),    # already at the start: previous song
+])
+def test_prev_or_restart_song_when_stopped(player, elapsed, expected):
+    folder_status = stopped_at(player, 'A/02.mp3', elapsed=elapsed)
+
+    player.prev_or_restart_song()
+
+    assert folder_status['CURRENTFILENAME'] == expected
+    assert folder_status['ELAPSED'] == '0.0'
+    player.mpd_client.previous.assert_not_called()
+
+
+def test_toggle_plays_song_selected_while_stopped(player):
+    stopped_at(player, 'A/02.mp3')
+    player.next()
+    player.mpd_client.playlistfind.return_value = [{'file': 'A/03.mp3', 'pos': '2'}]
+
+    player.toggle()
+
+    player.mpd_client.playlistfind.assert_called_once_with('file', 'A/03.mp3')
+    player.mpd_client.seek.assert_called_once_with('2', '0.0')
+
+
+def paused_at(player, song, elapsed='12.0', length='3', repeat='0', random='0'):
+    player.mpd_client.status.return_value = {'state': 'pause', 'song': song, 'elapsed': elapsed,
+                                             'playlistlength': length, 'repeat': repeat, 'random': random}
+
+
+@pytest.mark.parametrize('method, song, repeat, expected', [
+    ('next', '1', '0', 2),
+    ('next', '2', '0', 2),      # stays at the last song
+    ('next', '2', '1', 0),      # repeat: wraps to the first song
+    ('prev', '1', '0', 0),
+    ('prev', '0', '0', 0),      # stays at the first song
+    ('prev', '0', '1', 2),      # repeat: wraps to the last song
+])
+def test_next_prev_when_paused_stay_paused(player, method, song, repeat, expected):
+    paused_at(player, song, repeat=repeat)
+
+    getattr(player, method)()
+
+    player.mpd_client.seek.assert_called_once_with(expected, 0)
+    for mpd_call in ('next', 'previous', 'play', 'pause'):
+        getattr(player.mpd_client, mpd_call).assert_not_called()
+
+
+@pytest.mark.parametrize('elapsed, expected', [('10.0', 1), ('1.0', 0)])
+def test_prev_or_restart_song_when_paused(player, elapsed, expected):
+    paused_at(player, '1', elapsed=elapsed)
+
+    player.prev_or_restart_song()
+
+    player.mpd_client.seek.assert_called_once_with(expected, 0)
+    player.mpd_client.seekcur.assert_not_called()
+
+
+def test_next_when_paused_pauses_again_if_mpd_started_playing(player):
+    paused_at(player, '0')
+    status = dict(player.mpd_client.status.return_value)
+    # status is read: stopped check, paused check, check after the seek
+    player.mpd_client.status.side_effect = [status, status, {**status, 'state': 'play'}]
+
+    player.next()
+
+    player.mpd_client.pause.assert_called_once_with(1)
+
+
+def test_next_when_paused_with_random_uses_mpd_next(player):
+    paused_at(player, '0', random='1')
+    status = dict(player.mpd_client.status.return_value)
+    player.mpd_client.status.side_effect = [status, status, {**status, 'state': 'play'}]
+
+    player.next()
+
+    player.mpd_client.next.assert_called_once_with()
+    player.mpd_client.pause.assert_called_once_with(1)
+
+
+def test_next_when_stopped_with_empty_playlist_does_nothing(player):
+    player.mpd_client.status.return_value = {'state': 'stop'}
+    player.mpd_client.playlistinfo.return_value = []
+
+    player.next()
+
+    player.mpd_client.next.assert_not_called()
+
+
 def test_rewind_starts_first_song():
     p = playermpd.PlayerMPD.__new__(playermpd.PlayerMPD)
     p.mpd_client = mock.Mock()
@@ -201,10 +350,8 @@ def test_rewind_starts_first_song():
 
 @pytest.mark.parametrize('state, elapsed, expected', [
     ('play', '10.0', 'seekcur'),    # song is playing for a while: back to its start
-    ('pause', '10.0', 'seekcur'),
     ('play', '3.0', 'seekcur'),
     ('play', '2.9', 'previous'),    # pressed again right after the restart: previous song
-    ('stop', None, 'previous'),
 ])
 def test_prev_or_restart_song(state, elapsed, expected):
     p = playermpd.PlayerMPD.__new__(playermpd.PlayerMPD)
