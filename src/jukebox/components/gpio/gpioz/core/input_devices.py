@@ -26,6 +26,22 @@ import jukebox.utils
 logger = logging.getLogger('jb.gpioz')
 
 
+def _log_exceptions(func: Callable, description: str) -> Callable:
+    """
+    Wrap a device action, so an exception is logged instead of being raised
+
+    Device actions run in the GPIO callback thread of the pin factory. An exception there ends this thread,
+    and with it the event handling of *all* input devices (e.g. ``next`` at the end of the playlist raises
+    MPD's "Not playing").
+    """
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Action '{description}' failed: {e.__class__.__name__}: {e}")
+    return wrapper
+
+
 class NameMixin(ABC):
     """
     Provides name property and RPC decode function
@@ -68,7 +84,7 @@ class NameMixin(ABC):
                                                    'kwargs': None,
                                                    'args': msg}, dereference=True, logger=logger)
 
-        return func
+        return _log_exceptions(func, f"{self._name}.{action_name}")
 
     @abstractmethod
     def set_rpc_actions(self, action_config) -> None:
