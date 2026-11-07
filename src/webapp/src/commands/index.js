@@ -24,11 +24,21 @@ const commands = {
     plugin: 'ctrl',
     method: 'list_songs_by_artist_and_album',
   },
+  allSongsList: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'list_all_songs',
+  },
   getSongByUrl: {
     _package: 'player',
     plugin: 'ctrl',
     method: 'get_song_by_url',
     argKeys: ['song_url']
+  },
+  musicLibraryPath: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'get_music_library_path',
   },
   folderList: {
     _package: 'player',

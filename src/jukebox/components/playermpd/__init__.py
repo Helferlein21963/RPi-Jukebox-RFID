@@ -825,14 +825,30 @@ class PlayerMPD:
         return self.get_single_coverart(song_list[0]['file'])
 
     @plugs.tag
+    def get_music_library_path(self) -> str:
+        """
+        Absolute path of the music library (the ``music_directory`` of MPD)
+
+        :meth:`get_folder_content` returns absolute paths below this folder
+        """
+        return os.path.abspath(os.path.expanduser(components.player.get_music_library_path()))
+
+    @plugs.tag
     def get_folder_content(self, folder: str):
         """
         Get the folder content as content list with meta-information. Depth is always 1.
 
         Call repeatedly to descend in hierarchy
 
-        :param folder: Folder path relative to music library path
+        :param folder: Folder path relative to music library path (or absolute, as returned by this method)
+        :raises ValueError: if the folder is outside of the music library
         """
+        library = self.get_music_library_path()
+        # No realpath: symlinked folders inside the library stay allowed
+        target = os.path.abspath(os.path.join(library, folder))
+        if os.path.commonpath([library, target]) != library:
+            raise ValueError(f"Folder '{folder}' is outside of the music library")
+
         plc = playlistgenerator.PlaylistCollector(components.player.get_music_library_path())
         plc.get_directory_content(folder)
         return plc.playlist
@@ -989,6 +1005,36 @@ class PlayerMPD:
             song_list = self.mpd_retry_with_mutex(self.mpd_client.find, 'albumartist', albumartist, 'album', album)
 
         return song_list
+
+    @plugs.tag
+    def list_all_songs(self):
+        """
+        List all songs of the MPD database, sorted by title
+
+        Each song is reduced to ``file``, ``title``, ``artist``, ``album``, ``albumartist`` and ``duration``
+        (missing tags are empty strings). Songs without a title are sorted by their file name.
+
+        :raises RuntimeError: if the MPD database could not be read
+        """
+        with self.mpd_lock:
+            entries = self.mpd_retry_with_mutex(self.mpd_client.listallinfo)
+
+        if entries is None:
+            raise RuntimeError("Could not read the song list from MPD")
+
+        songs = [
+            {
+                'file': entry['file'],
+                'title': entry.get('title', ''),
+                'artist': entry.get('artist', ''),
+                'album': entry.get('album', ''),
+                'albumartist': entry.get('albumartist', ''),
+                'duration': entry.get('duration', entry.get('time', '')),
+            }
+            for entry in entries if 'file' in entry
+        ]
+        songs.sort(key=lambda song: (song['title'] or os.path.basename(song['file'])).casefold())
+        return songs
 
     @plugs.tag
     def get_song_by_url(self, song_url):

@@ -9,29 +9,35 @@ import { useTranslation } from 'react-i18next';
 import {
   Grid,
   IconButton,
-  Stack,
-  Switch,
   TextField,
-  Typography,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 
 import SearchIcon from '@mui/icons-material/Search';
 
-const LibraryHeader = ({ handleMusicFilter, musicFilter }) => {
+const VIEWS = ['albums', 'folders', 'songs'];
+
+const LibraryHeader = ({ musicFilter, setMusicFilter }) => {
   const { search: urlSearch } = useLocation();
   const navigate = useNavigate();
   const { '*': view } = useParams();
   const { t } = useTranslation();
   const [showSearchInput, setShowSearchInput] = useState(false);
 
-  const getCurrentView = () => (
-    view.startsWith('folders') ? 'folders' : 'albums'
-  );
+  const currentView = VIEWS.find(name => view.startsWith(name)) || 'albums';
 
-  const toggleView = () => {
-    const path = view.startsWith('folders') ? 'albums' : 'folders';
+  const changeView = (event, path) => {
+    // Clicking the active button deselects it: keep the current view then
+    if (!path || path === currentView) return;
     localStorage.setItem('libraryLastListView', path);
     navigate(`${path}${urlSearch}`);
+  };
+
+  const toggleSearchInput = () => {
+    // An invisible filter would keep hiding music, so drop it with the input
+    if (showSearchInput) setMusicFilter('');
+    setShowSearchInput(!showSearchInput);
   };
 
   const iconLabel = showSearchInput
@@ -42,11 +48,11 @@ const LibraryHeader = ({ handleMusicFilter, musicFilter }) => {
     <Grid container sx={{ marginBottom: '8px' }}>
       <Grid item
         xs={12}
-        sx={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', width: '100%' }}
+        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}
       >
         <IconButton
           aria-label={iconLabel}
-          onClick={() => setShowSearchInput(!showSearchInput)}
+          onClick={toggleSearchInput}
           color={showSearchInput ? 'primary' : undefined}
           title={iconLabel}
         >
@@ -56,42 +62,31 @@ const LibraryHeader = ({ handleMusicFilter, musicFilter }) => {
           <TextField
             id="library-search"
             label={t('library.header.search-label')}
-            onChange={handleMusicFilter}
+            onChange={(event) => setMusicFilter(event.target.value)}
             value={musicFilter}
             variant="outlined"
             size="small"
             autoFocus
-            focused
             sx={{
               width: '100%',
             }}
           />
         }
         {!showSearchInput &&
-          <Stack
-            alignItems="center"
-            direction="row"
-            sx={{ marginRight: '5px' }}
+          <ToggleButtonGroup
+            value={currentView}
+            exclusive
+            onChange={changeView}
+            aria-label={t('library.header.toggle-label')}
+            size="small"
+            color="primary"
           >
-            <Typography
-              color={getCurrentView() === 'albums' && 'primary'}
-              sx={{ transition: 'color .25s' }}
-            >
-              {t('library.header.albums')}
-            </Typography>
-            <Switch
-              checked={getCurrentView() === 'folders' ? true : false}
-              onChange={toggleView}
-              inputProps={{ 'aria-label': t('library.header.toggle-label') }}
-              color="default"
-            />
-            <Typography
-              color={getCurrentView() === 'folders' && 'primary'}
-              sx={{ transition: 'color .25s' }}
-            >
-              {t('library.header.folders')}
-            </Typography>
-          </Stack>
+            {VIEWS.map(name => (
+              <ToggleButton key={name} value={name}>
+                {t(`library.header.${name}`)}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
         }
       </Grid>
     </Grid>

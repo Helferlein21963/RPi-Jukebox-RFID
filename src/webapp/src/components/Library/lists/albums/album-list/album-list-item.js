@@ -16,8 +16,16 @@ import {
 import noCover from '../../../../../assets/noCover.jpg';
 
 import request from '../../../../../utils/request';
+import { NowPlayingIcon } from '../../../now-playing';
+import { tagToUrl } from '../utils';
 
-const AlbumListItem = ({ albumartist, album, isButton = true }) => {
+const AlbumListItem = ({
+  albumartist,
+  album,
+  isButton = true,
+  isCurrent = false,
+  isPlaying = false,
+}) => {
   const { t } = useTranslation();
   const { search: urlSearch } = useLocation();
   const [coverImage, setCoverImage] = useState(noCover);
@@ -41,11 +49,8 @@ const AlbumListItem = ({ albumartist, album, isButton = true }) => {
   const AlbumLink = forwardRef((props, ref) => {
     const { data } = props;
 
-    const artist = encodeURIComponent(data?.albumartist || t('library.albums.unknown-artist'));
-    const album = encodeURIComponent(data?.album || t('library.albums.unknown-album'));
-
-    // TODO: Introduce fallback incase artist or album are undefined
-    const location = `${artist}/${album}${urlSearch}`;
+    // Empty tags stay empty: the song list looks the album up by these values
+    const location = `${tagToUrl(data?.albumartist)}/${tagToUrl(data?.album)}${urlSearch}`;
 
     return <Link ref={ref} to={location} {...props} />
   });
@@ -58,9 +63,14 @@ const AlbumListItem = ({ albumartist, album, isButton = true }) => {
       disablePadding
       key={album}
     >
-      <ListItemButton>
+      <ListItemButton selected={isCurrent}>
         <ListItemAvatar>
-          <Avatar variant="rounded" alt="Cover" src={coverImage} />
+          {isCurrent
+            ? <Avatar variant="rounded" sx={{ bgcolor: 'primary.main' }}>
+                <NowPlayingIcon isPlaying={isPlaying} />
+              </Avatar>
+            : <Avatar variant="rounded" alt="Cover" src={coverImage} />
+          }
         </ListItemAvatar>
         <ListItemText
           primary={album || t('library.albums.unknown-album')}
@@ -71,4 +81,5 @@ const AlbumListItem = ({ albumartist, album, isButton = true }) => {
   );
 }
 
-export default AlbumListItem;
+// Memo: the list re-renders with every player status update
+export default React.memo(AlbumListItem);

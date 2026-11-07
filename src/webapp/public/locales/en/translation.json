@@ -130,9 +130,10 @@
       "search-hide": "Hide search",
       "search-show": "Show search",
       "search-label": "Search",
-      "toggle-label": "Toggle Album/Folder view",
+      "toggle-label": "Choose view",
       "albums": "Albums",
-      "folders": "Folders"
+      "folders": "Folders",
+      "songs": "Songs"
     },
     "selector-header": {
       "title": "Select an album, folder or song"
@@ -152,6 +153,11 @@
       "empty-library": "Your library is empty!",
       "no-songs-in-album": "Strange, no songs in this album.",
       "assign-to-card": "Assign album to card"
+    },
+    "songs": {
+      "no-music": "No music found!",
+      "empty-library": "Your library is still empty!",
+      "show-more": "Show more ({{count}} remaining)"
     }
   },
   "navigation": {

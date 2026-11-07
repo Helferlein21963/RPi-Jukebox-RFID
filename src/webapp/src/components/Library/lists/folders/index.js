@@ -9,6 +9,7 @@ import {
 
 import request from '../../../../utils/request';
 import FolderList from "./folder-list";
+import { useMusicLibraryPath } from '../../now-playing';
 
 const Folders = ({
   musicFilter,
@@ -20,6 +21,8 @@ const Folders = ({
   const [folders, setFolders] = useState([]);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Folder paths are absolute: needed to recognize the library root
+  const libraryPath = useMusicLibraryPath();
 
   const search = ({ name }) => {
     if (musicFilter === '') return true;
@@ -58,6 +61,7 @@ const Folders = ({
     <FolderList
       dir={dir}
       folders={filteredFolders}
+      libraryPath={libraryPath}
       isSelecting={isSelecting}
       registerMusicToCard={registerMusicToCard}
     />

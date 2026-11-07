@@ -4,16 +4,17 @@ import { useTranslation } from 'react-i18next';
 import {
   Button,
   Grid,
-  IconButton,
 } from '@mui/material';
 
-import PlayCircleFilledRoundedIcon from '@mui/icons-material/PlayCircleFilledRounded';
+import { PlayButton } from '../../../now-playing';
 import request from '../../../../../utils/request';
 
 const SongListControls = ({
   albumartist,
   album,
   disabled,
+  isCurrent,
+  isPlaying,
   registerMusicToCard,
   isSelecting
 }) => {
@@ -38,14 +39,13 @@ const SongListControls = ({
       >
         {
           !isSelecting
-            ? <IconButton
-                aria-label="Play"
-                onClick={playAlbum}
+            ? <PlayButton
+                isCurrent={isCurrent}
+                isPlaying={isPlaying}
+                onPlay={playAlbum}
                 disabled={disabled}
-                size="large"
-              >
-                <PlayCircleFilledRoundedIcon color="primary" style={{ fontSize: 64 }} />
-              </IconButton>
+                label={t('player.controls.play')}
+              />
             : <Button
                 variant="outlined"
                 onClick={registerAlbumToCard}

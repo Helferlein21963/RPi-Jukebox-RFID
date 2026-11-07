@@ -15,6 +15,7 @@ import {
 import Albums from './albums';
 import SongList from './albums/song-list';
 import Folders from './folders';
+import Songs from './songs';
 import LibraryHeader from "../library-header";
 import SelectorHeader from "../selector-header";
 
@@ -27,10 +28,6 @@ const LibraryLists = () => {
   const [isSelecting] = useState(searchParams.get('isSelecting'));
   const [cardId] = useState(searchParams.get('cardId'));
   const [musicFilter, setMusicFilter] = useState('');
-
-  const handleMusicFolder = (event) => {
-    setMusicFilter(event.target.value);
-  };
 
   const registerMusicToCard = (command, args) => {
     const actionData = buildActionData('play_music', command, args);
@@ -49,8 +46,8 @@ const LibraryLists = () => {
       {isSelecting && <SelectorHeader />}
       <Grid container sx={{ padding: '10px' }}>
         <LibraryHeader
-          handleMusicFolder={handleMusicFolder}
           musicFilter={musicFilter}
+          setMusicFilter={setMusicFilter}
         />
         <Grid
           container
@@ -70,6 +67,17 @@ const LibraryLists = () => {
               path="albums/:artist/:album"
               element={
                 <SongList
+                  isSelecting={isSelecting}
+                  registerMusicToCard={registerMusicToCard}
+                />
+              }
+              exact
+            />
+            <Route
+              path="songs"
+              element={
+                <Songs
+                  musicFilter={musicFilter}
                   isSelecting={isSelecting}
                   registerMusicToCard={registerMusicToCard}
                 />

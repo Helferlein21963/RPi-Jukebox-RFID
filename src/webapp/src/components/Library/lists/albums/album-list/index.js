@@ -7,20 +7,28 @@ import {
 } from '@mui/material';
 
 import AlbumListItem from './album-list-item';
+import { isAlbumPlaying, useNowPlaying } from '../../../now-playing';
 
 const AlbumList = ({ albums, musicFilter }) => {
   const { t } = useTranslation();
+  const nowPlaying = useNowPlaying();
 
   if (albums?.length) {
     return (
       <List sx={{ width: '100%' }}>
-        {albums.map(({ albumartist, album }, i) => (
-          <AlbumListItem
-            key={i}
-            albumartist={albumartist}
-            album={album}
-          />
-        ))}
+        {albums.map(({ albumartist, album }, i) => {
+          const isCurrent = isAlbumPlaying(nowPlaying, albumartist, album);
+
+          return (
+            <AlbumListItem
+              key={i}
+              albumartist={albumartist}
+              album={album}
+              isCurrent={isCurrent}
+              isPlaying={isCurrent && nowPlaying.isPlaying}
+            />
+          );
+        })}
       </List>
     );
   }

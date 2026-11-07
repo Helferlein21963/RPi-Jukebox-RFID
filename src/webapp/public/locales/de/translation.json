@@ -130,9 +130,10 @@
       "search-hide": "Suche ausblenden",
       "search-show": "Suche einblenden",
       "search-label": "Suche",
-      "toggle-label": "Album- und Ordner-Ansicht",
+      "toggle-label": "Ansicht wählen",
       "albums": "Alben",
-      "folders": "Ordner"
+      "folders": "Ordner",
+      "songs": "Titel"
     },
     "selector-header": {
       "title": "Wähle ein Album, einen Ordner oder einen Song aus"
@@ -152,6 +153,11 @@
       "empty-library": "Deine Bibliothek ist noch leer!",
       "no-songs-in-album": "Komisch, in diesem Album gibt es keine Songs.",
       "assign-to-card": "Dieses Album registrieren"
+    },
+    "songs": {
+      "no-music": "Keine Musik gefunden!",
+      "empty-library": "Deine Bibliothek ist noch leer!",
+      "show-more": "Weitere anzeigen (noch {{count}})"
     }
   },
   "navigation": {

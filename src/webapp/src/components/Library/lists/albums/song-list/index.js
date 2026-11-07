@@ -15,13 +15,18 @@ import SongListHeader from './song-list-header';
 import SongListHeadline from './song-list-headline';
 import SongListControls from './song-list-controls';
 import SongListItem from './song-list-item';
+import { isSongPlaying, useNowPlaying } from '../../../now-playing';
+import { tagFromUrl } from '../utils';
 
 const SongList = ({
   isSelecting,
   registerMusicToCard,
 }) => {
   const { t } = useTranslation();
-  const { artist, album } = useParams();
+  const params = useParams();
+  const album = tagFromUrl(params.album);
+  const artist = tagFromUrl(params.artist);
+  const nowPlaying = useNowPlaying();
   const [songs, setSongs] = useState([]);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,8 +37,8 @@ const SongList = ({
       const { result, error } = await request(
         'songList',
         {
-          album: decodeURIComponent(album),
-          albumartist: decodeURIComponent(artist),
+          album,
+          albumartist: artist,
         }
       );
       setIsLoading(false);
@@ -47,17 +52,21 @@ const SongList = ({
     getSongList();
   }, [album, artist]);
 
+  const isAlbumCurrent = songs.some(({ file }) => isSongPlaying(nowPlaying, file));
+
   return (
     <Grid container id="song-list">
       <SongListHeader />
       <SongListHeadline
-        album={decodeURIComponent(album)}
-        artist={decodeURIComponent(artist)}
+        album={album || t('library.albums.unknown-album')}
+        artist={artist || t('library.albums.unknown-artist')}
       />
       <SongListControls
-        album={decodeURIComponent(album)}
-        albumartist={decodeURIComponent(artist)}
+        album={album}
+        albumartist={artist}
         disabled={songs.length === 0}
+        isCurrent={isAlbumCurrent}
+        isPlaying={isAlbumCurrent && nowPlaying.isPlaying}
         isSelecting={isSelecting}
         registerMusicToCard={registerMusicToCard}
       />
@@ -73,16 +82,22 @@ const SongList = ({
         {isLoading
           ? <CircularProgress />
           : <List sx={{ width: '100%' }}>
-              {songs.map(song =>
-                <SongListItem
-                  key={song.track}
-                  album={decodeURIComponent(album)}
-                  albumartist={decodeURIComponent(artist)}
-                  song={song}
-                  isSelecting={isSelecting}
-                  registerMusicToCard={registerMusicToCard}
-                />
-              )}
+              {songs.map(song => {
+                const isCurrent = isSongPlaying(nowPlaying, song.file);
+
+                return (
+                  <SongListItem
+                    key={song.file}
+                    album={album}
+                    albumartist={artist}
+                    song={song}
+                    isCurrent={isCurrent}
+                    isPlaying={isCurrent && nowPlaying.isPlaying}
+                    isSelecting={isSelecting}
+                    registerMusicToCard={registerMusicToCard}
+                  />
+                );
+              })}
             </List>
         }
         {error &&

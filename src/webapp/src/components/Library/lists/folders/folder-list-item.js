@@ -13,11 +13,15 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import request from '../../../../utils/request';
 import FolderLink from './folder-link';
 import FolderTypeAvatar from './folder-type-avatar';
-import { DEFAULT_AUDIO_DIR, ROOT_DIRS } from '../../../../config';
+import { togglePlayback } from '../../now-playing';
+import { DEFAULT_AUDIO_DIR } from '../../../../config';
 
 const FolderListItem = ({
   dir,
+  isRootDir,
   folder,
+  isCurrent,
+  isPlaying,
   isSelecting,
   registerMusicToCard,
 }) => {
@@ -26,12 +30,17 @@ const FolderListItem = ({
   const isDirectory = type === 'directory';
 
   // Play the whole folder that is shown, starting with this entry.
-  // Like the play button of the folder: recursive, except in the root folder (the whole library)
-  const playFolderFromItem = () => request('play_folder', {
-    folder: dir,
-    recursive: !ROOT_DIRS.includes(dir),
-    start_song: path,
-  });
+  // Like the play button of the folder: recursive, except in the root folder (the whole library).
+  // The song that is playing: pause, or continue
+  const playFolderFromItem = () => (
+    isCurrent
+      ? togglePlayback()
+      : request('play_folder', {
+          folder: dir,
+          recursive: !isRootDir,
+          start_song: path,
+        })
+  );
 
   const registerItemToCard = () => {
     switch(type) {
@@ -65,8 +74,8 @@ const FolderListItem = ({
           : undefined
       }
     >
-      <ListItemButton {...buttonProps}>
-        <FolderTypeAvatar type={type} />
+      <ListItemButton selected={isCurrent} {...buttonProps}>
+        <FolderTypeAvatar type={type} isCurrent={isCurrent} isPlaying={isPlaying} />
         <ListItemText primary={name} />
       </ListItemButton>
     </ListItem>
