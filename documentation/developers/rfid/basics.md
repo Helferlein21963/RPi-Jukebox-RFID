@@ -94,7 +94,9 @@ Looking for 'Second Swipe' option? That is part of the Player configuration and 
 Music cards with the `play_folder` action (as registered through the Web App) are passed to `player.ctrl.play_card`, which decides:
 
 * The card's folder is playing or paused: run the configured second swipe action (`playermpd.second_swipe_action`, e.g. `toggle` for pause / resume).
-* Otherwise (another folder was played in between, or this folder was stopped): play the folder and continue at the song and position where it was left last time. A folder that has played to its end starts with the first song again. `rewind` (e.g. on a long button press) restarts the current folder with the first song.
+* Otherwise (another folder was played in between, or this folder was stopped): play the folder and continue at the song and position where it was left last time (`playermpd.play_card_resume`). A folder that has played to its end starts with the first song again. `rewind` (e.g. on a long button press) restarts the current folder with the first song.
+
+The second swipe action, resuming and `same_id_delay` (for all readers) can be changed in the Web App under *Settings → RFID Cards*. The changes take effect immediately and are saved to `jukebox.yaml` and `rfid.yaml`.
 
 > [!NOTE]
 > Readers that are not place-capable, e.g. most [USB-based RFID readers](genericusb.md), can also report a read when a card is *removed*. A card that was left lying on such a reader then triggers the second swipe action on removal. Reads of the same card within `same_id_delay` are ignored, which covers double reads while placing a card.

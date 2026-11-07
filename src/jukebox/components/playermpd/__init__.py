@@ -165,9 +165,11 @@ class PlayerMPD:
                                          'skip': self.next,
                                          'rewind': self.rewind,
                                          'replay': self.replay,
-                                         'replay_if_stopped': self.replay_if_stopped}
+                                         'replay_if_stopped': self.replay_if_stopped,
+                                         'ignore': self._ignore_second_swipe}
         self.second_swipe_action = None
         self.decode_2nd_swipe_option()
+        self.play_card_resume = bool(cfg.setndefault('playermpd', 'play_card_resume', value=True))
 
         self.mpd_client = mpd.MPDClient()
         self.coverart_cache_manager = CoverartCacheManager()
@@ -247,6 +249,56 @@ class PlayerMPD:
                                                          custom_action['method'],
                                                          custom_action['args'],
                                                          custom_action['kwargs'])
+
+    @staticmethod
+    def _ignore_second_swipe():
+        logger.debug("Second swipe ignored")
+
+    @plugs.tag
+    def get_second_swipe_action(self) -> str:
+        """Get the second swipe action (``playermpd.second_swipe_action.alias``), e.g. 'toggle' or 'none'"""
+        return str(cfg.getn('playermpd', 'second_swipe_action', 'alias', default='none')).lower()
+
+    @plugs.tag
+    def set_second_swipe_action(self, action: str) -> str:
+        """
+        Set and save the action run when the card of the current folder is swiped again (see :meth:`play_card`)
+
+        :param action: One of 'toggle', 'play', 'skip', 'rewind', 'replay', 'replay_if_stopped', 'ignore', 'none'.
+            'ignore' does nothing, 'none' plays the folder again like a first swipe.
+        :return: The new action
+        """
+        action = str(action).lower()
+        if action not in [*self.second_swipe_action_dict.keys(), 'none']:
+            raise ValueError(f"Unknown second swipe action '{action}'. "
+                             f"Must be one of {[*self.second_swipe_action_dict.keys(), 'none']}")
+        with cfg:
+            cfg.setn('playermpd', 'second_swipe_action', value={'alias': action})
+            self.second_swipe_action = self.second_swipe_action_dict.get(action)
+            cfg.save(only_if_changed=True)
+        logger.info(f"Second swipe action set to '{action}'")
+        return action
+
+    @plugs.tag
+    def get_play_card_resume(self) -> bool:
+        """Get whether cards continue a folder where it was left last time (``playermpd.play_card_resume``)"""
+        return self.play_card_resume
+
+    @plugs.tag
+    def set_play_card_resume(self, enabled: bool) -> bool:
+        """
+        Set and save whether cards continue a folder where it was left last time, or always start with the first song
+
+        :param enabled: True: continue at the remembered song and position (see :meth:`play_card`)
+        :return: The new setting
+        """
+        enabled = bool(enabled)
+        with cfg:
+            cfg.setn('playermpd', 'play_card_resume', value=enabled)
+            self.play_card_resume = enabled
+            cfg.save(only_if_changed=True)
+        logger.info(f"Resume on card swipe {'enabled' if enabled else 'disabled'}")
+        return enabled
 
     def mpd_retry_with_mutex(self, mpd_cmd, *args):
         """
@@ -561,8 +613,9 @@ class PlayerMPD:
         * Second swipe: the folder is the current one and is playing or paused. Runs the configured
           second swipe action (``playermpd.second_swipe_action``, e.g. ``toggle`` for pause / resume).
         * First swipe: any other case, e.g. another folder is loaded (from a card or the web app), or this folder
-          has been stopped or has played to its end. Plays the folder and continues at the remembered song and
-          position of this folder. A folder that has played to its end starts with the first song again.
+          has been stopped or has played to its end. Plays the folder and, if ``playermpd.play_card_resume`` is
+          enabled, continues at the remembered song and position of this folder. A folder that has played to its
+          end starts with the first song again.
 
         :param folder: Folder path relative to music library path
         :param recursive: Add folder recursively
@@ -585,7 +638,7 @@ class PlayerMPD:
                 # run callbacks before play_folder is invoked
                 play_card_callbacks.run_callbacks(folder, PlayCardState.firstSwipe)
 
-                self.play_folder(folder, recursive, resume=True)
+                self.play_folder(folder, recursive, resume=self.play_card_resume)
 
     @plugs.tag
     def get_single_coverart(self, song_url):

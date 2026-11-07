@@ -153,6 +153,35 @@ def test_other_card_in_between_is_a_new_read(monkeypatch):
     assert player_calls(calls) == ['player.ctrl.play_card', 'player.ctrl.next', 'player.ctrl.play_card']
 
 
+@pytest.fixture
+def rfid_cfg(monkeypatch):
+    handler = jukebox.cfghandler.get_handler('rfid')
+    handler.config_dict({'rfid': {'readers': {
+        'read_a': {'module': 'x', 'same_id_delay': 1.0},
+        'read_b': {'module': 'y'}}}})
+    monkeypatch.setattr(handler, 'save', lambda only_if_changed=False: None)
+    return handler
+
+
+def test_set_same_id_delay_applies_to_all_readers(monkeypatch, rfid_cfg):
+    runner = types.SimpleNamespace(_cfg_same_id_delay=1.0)
+    monkeypatch.setitem(reader._READERS, 'read_a', runner)
+
+    assert reader.get_same_id_delay() == 1.0
+    assert reader.set_same_id_delay('3.5') == 3.5
+
+    assert reader.get_same_id_delay() == 3.5
+    assert rfid_cfg.getn('rfid', 'readers', 'read_b', 'same_id_delay') == 3.5
+    assert runner._cfg_same_id_delay == 3.5
+
+
+@pytest.mark.parametrize('delay', [-1, 11])
+def test_set_same_id_delay_rejects_out_of_range(rfid_cfg, delay):
+    with pytest.raises(ValueError):
+        reader.set_same_id_delay(delay)
+    assert reader.get_same_id_delay() == 1.0
+
+
 @pytest.mark.parametrize('action, expected', [
     ({'package': 'player', 'plugin': 'ctrl', 'method': 'play_folder', 'args': ['x'], 'kwargs': {}}, 'play_card'),
     ({'package': 'player', 'plugin': 'ctrl', 'method': 'play_album', 'args': [], 'kwargs': {}}, 'play_album'),

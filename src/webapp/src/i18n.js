@@ -20,6 +20,11 @@ i18n
     debug: true,
     // lng: 'en',
     fallbackLng: 'en',
+    backend: {
+      // Always ask the server for a newer translation file (cheap if unchanged), so texts of a
+      // rebuilt Web App are not taken from the browser cache
+      requestOptions: { cache: 'no-cache' },
+    },
     interpolation: {
       escapeValue: false, // not needed for react as it escapes by default
     },

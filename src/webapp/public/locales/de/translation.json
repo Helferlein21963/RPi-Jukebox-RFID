@@ -229,13 +229,25 @@
       "idle-shutdown": "Leerlaufabschaltung",
       "ended": "Beendet"
     },
-    "secondswipe": {
-      "title": "Erneute Aktivierung (Second Swipe)",
-      "description": "Aktion, wenn dieselbe Karte ein weiteres Mal aktiviert wird",
-      "restart": "Wiedergabeliste neu starten",
-      "toggle": "Pause / Wiedergabe umschalten",
-      "skip": "Zum nächsten Track springen",
-      "ignore": "Nur Systembefehle mehrfach ausführen"
+    "rfidcards": {
+      "title": "RFID-Karten",
+      "second-swipe": {
+        "title": "Erneute Aktivierung (Second Swipe)",
+        "description": "Aktion, wenn die Karte der gerade laufenden oder pausierten Wiedergabe nochmal gelesen wird",
+        "toggle": "Pause / Wiedergabe umschalten",
+        "rewind": "Wiedergabeliste neu starten",
+        "skip": "Zum nächsten Track springen",
+        "ignore": "Nichts tun (nur Befehlskarten wirken mehrfach)"
+      },
+      "resume": {
+        "title": "An gemerkter Stelle weiterhören",
+        "description": "Jede Karte setzt dort fort, wo sie zuletzt aufgehört hat – auch wenn zwischendurch eine andere Karte lief. Ausgeschaltet beginnt jede Karte mit dem ersten Titel."
+      },
+      "same-id-delay": {
+        "title": "Sperrzeit gegen Doppel-Lesungen",
+        "description": "Weitere Lesungen derselben Karte innerhalb dieser Zeit werden ignoriert. Jede Lesung startet die Zeit neu.",
+        "hint": "Hinweis: Viele USB-Leser melden auch das Abnehmen einer Karte. Eine liegen gelassene Karte löst beim Abnehmen deshalb die erneute Aktivierung aus."
+      }
     },
     "status": {
       "title": "Systemstatus",

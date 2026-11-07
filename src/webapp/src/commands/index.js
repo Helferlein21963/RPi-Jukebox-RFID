@@ -97,6 +97,37 @@ const commands = {
     plugin: 'ctrl',
     method: 'toggle',
   },
+  getSecondSwipeAction: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'get_second_swipe_action',
+  },
+  setSecondSwipeAction: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'set_second_swipe_action',
+    argKeys: ['action'],
+  },
+  getPlayCardResume: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'get_play_card_resume',
+  },
+  setPlayCardResume: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'set_play_card_resume',
+    argKeys: ['enabled'],
+  },
+  getSameIdDelay: {
+    _package: 'rfid',
+    plugin: 'get_same_id_delay',
+  },
+  setSameIdDelay: {
+    _package: 'rfid',
+    plugin: 'set_same_id_delay',
+    argKeys: ['delay'],
+  },
   shuffle: {
     _package: 'player',
     plugin: 'ctrl',

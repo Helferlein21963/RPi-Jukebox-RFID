@@ -55,6 +55,7 @@ def player(monkeypatch):
         })
     p.current_folder_status = {}
     p.second_swipe_action = mock.Mock()
+    p.play_card_resume = True
     p._last_state = None
     p._was_near_playlist_end = False
     p._saved_folder = None
@@ -118,6 +119,69 @@ def test_saved_song_no_longer_in_folder_starts_with_first_song(player):
 
     player.mpd_client.seek.assert_not_called()
     player.mpd_client.play.assert_called_once_with()
+
+
+def test_resume_disabled_starts_with_first_song(player):
+    set_state(player, 'play', FOLDER_B)
+    player.play_card_resume = False
+
+    player.play_card(FOLDER_A)
+
+    player.mpd_client.seek.assert_not_called()
+    player.mpd_client.play.assert_called_once_with()
+
+
+@pytest.fixture
+def jukebox_cfg(monkeypatch):
+    handler = playermpd.cfg
+    handler.config_dict({'playermpd': {'second_swipe_action': {'alias': 'toggle'}, 'play_card_resume': True}})
+    monkeypatch.setattr(handler, 'save', mock.Mock())
+    return handler
+
+
+def test_set_second_swipe_action(player, jukebox_cfg):
+    player.second_swipe_action_dict = {'toggle': mock.Mock(), 'ignore': mock.Mock()}
+
+    assert player.set_second_swipe_action('IGNORE') == 'ignore'
+
+    assert player.get_second_swipe_action() == 'ignore'
+    assert player.second_swipe_action is player.second_swipe_action_dict['ignore']
+    jukebox_cfg.save.assert_called_once()
+
+
+def test_set_second_swipe_action_none_disables_second_swipe(player, jukebox_cfg):
+    player.second_swipe_action_dict = {'toggle': mock.Mock()}
+
+    player.set_second_swipe_action('none')
+
+    assert player.second_swipe_action is None
+    assert jukebox_cfg.getn('playermpd', 'second_swipe_action', 'alias') == 'none'
+
+
+def test_set_second_swipe_action_rejects_unknown(player, jukebox_cfg):
+    player.second_swipe_action_dict = {'toggle': mock.Mock()}
+
+    with pytest.raises(ValueError):
+        player.set_second_swipe_action('explode')
+    assert player.get_second_swipe_action() == 'toggle'
+
+
+def test_set_play_card_resume(player, jukebox_cfg):
+    assert player.set_play_card_resume(False) is False
+
+    assert player.get_play_card_resume() is False
+    assert jukebox_cfg.getn('playermpd', 'play_card_resume') is False
+    jukebox_cfg.save.assert_called_once()
+
+
+def test_ignore_second_swipe_does_nothing(player):
+    set_state(player, 'play', FOLDER_A)
+    player.second_swipe_action = player._ignore_second_swipe
+
+    player.play_card(FOLDER_A)
+
+    player.mpd_client.clear.assert_not_called()
+    player.mpd_client.pause.assert_not_called()
 
 
 def test_play_folder_from_web_app_starts_with_first_song(player):

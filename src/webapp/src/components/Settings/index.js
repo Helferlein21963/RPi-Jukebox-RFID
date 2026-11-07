@@ -3,7 +3,7 @@ import React from 'react';
 import { Grid } from '@mui/material';
 
 import SettingsAutoHotspot from './autohotspot';
-import SettingsSecondSwipe from './secondswipe';
+import SettingsRfidCards from './rfidcards';
 import SettingsAudio from './audio/index';
 import SettingsStatus from './status/index';
 import SettingsTimers from './timers/index';
@@ -38,7 +38,7 @@ const Settings = () => {
         <SystemControls />
       </Grid>
       <Grid item>
-        <SettingsSecondSwipe />
+        <SettingsRfidCards />
       </Grid>
       <Grid item>
         <SettingsAutoHotspot />

@@ -256,6 +256,48 @@ class ReaderRunner(threading.Thread):
         self._logger.debug("Stop listening!")
 
 
+#: Allowed range [s] for :func:`set_same_id_delay`
+SAME_ID_DELAY_RANGE = (0.0, 10.0)
+
+
+def _reader_keys():
+    return list(cfg_rfid.getn('rfid', 'readers', default=None) or {})
+
+
+@plugs.register
+def get_same_id_delay() -> float:
+    """Get the time [s] within which further reads of the same card are ignored (``same_id_delay`` of the first reader)"""
+    with cfg_rfid:
+        keys = _reader_keys()
+        if not keys:
+            return 1.0
+        return float(cfg_rfid.getn('rfid', 'readers', keys[0], 'same_id_delay', default=1.0))
+
+
+@plugs.register
+def set_same_id_delay(delay: float) -> float:
+    """
+    Set and save ``same_id_delay`` for all readers. Takes effect immediately
+
+    Reads of the same card within this time are ignored, e.g. double reads when placing or removing a card.
+    Every read restarts the time.
+
+    :param delay: Time in seconds
+    :return: The new delay
+    """
+    delay = float(delay)
+    if not SAME_ID_DELAY_RANGE[0] <= delay <= SAME_ID_DELAY_RANGE[1]:
+        raise ValueError(f"same_id_delay must be between {SAME_ID_DELAY_RANGE[0]} and {SAME_ID_DELAY_RANGE[1]}s")
+    with cfg_rfid:
+        for key in _reader_keys():
+            cfg_rfid.setn('rfid', 'readers', key, 'same_id_delay', value=delay)
+        cfg_rfid.save(only_if_changed=True)
+    for runner in _READERS.values():
+        runner._cfg_same_id_delay = delay
+    log.info(f"same_id_delay set to {delay}s")
+    return delay
+
+
 @plugs.finalize
 def finalize():
     try:

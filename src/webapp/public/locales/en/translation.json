@@ -229,13 +229,25 @@
       "idle-shutdown": "Idle Shut Down",
       "ended": "Done"
     },
-    "secondswipe": {
-      "title": "Second Swipe",
-      "description": "Second action after the same card swiped again",
-      "restart": "Restart playlist",
-      "toggle": "Toggle pause / play",
-      "skip": "Skip to next track",
-      "ignore": "Ignore audio playout triggers, only system commands"
+    "rfidcards": {
+      "title": "RFID Cards",
+      "second-swipe": {
+        "title": "Second Swipe",
+        "description": "Action when the card of the music currently playing or paused is read again",
+        "toggle": "Toggle pause / play",
+        "rewind": "Restart playlist",
+        "skip": "Skip to next track",
+        "ignore": "Do nothing (only command cards act repeatedly)"
+      },
+      "resume": {
+        "title": "Continue where left off",
+        "description": "Every card continues where it stopped last time – also if another card was played in between. When off, every card starts with the first track."
+      },
+      "same-id-delay": {
+        "title": "Delay against double reads",
+        "description": "Further reads of the same card within this time are ignored. Every read restarts the time.",
+        "hint": "Note: Many USB readers also report when a card is removed. A card left on the reader therefore triggers the second swipe action when it is removed."
+      }
     },
     "status": {
       "title": "System",

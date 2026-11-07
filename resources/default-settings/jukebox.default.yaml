@@ -80,9 +80,14 @@ playermpd:
   host: localhost
   status_file: ../../shared/settings/music_player_status.json
   second_swipe_action:
+    # Action when the card of the folder currently playing / paused is swiped again (can be set in the Web App)
     # Note: Does not follow the RPC alias convention (yet)
-    # Must be one of: 'toggle', 'play', 'skip', 'rewind', 'replay', 'none'
+    # Must be one of: 'toggle', 'play', 'skip', 'rewind', 'replay', 'replay_if_stopped', 'ignore', 'none'
+    # 'ignore': do nothing, 'none': play the folder again like a first swipe
     alias: toggle
+  # Cards continue a folder at the song and position where it was left last time (true)
+  # or always start with the first song (false). Can be set in the Web App
+  play_card_resume: true
   library:
     update_on_startup: true
     check_user_rights: true
