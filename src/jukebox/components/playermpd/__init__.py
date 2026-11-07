@@ -115,7 +115,8 @@ class MpdLock:
     def _try_connect(self):
         try:
             self.client.connect(self.host, self.port)
-        except mpd.base.ConnectionError:
+        except (mpd.base.ConnectionError, OSError):
+            # Already connected, or MPD not reachable: then the next command fails with a logged ConnectionError
             pass
 
     def __enter__(self):
@@ -242,8 +243,14 @@ class PlayerMPD:
         with self.mpd_lock:
             try:
                 value = mpd_cmd(*args)
+            except mpd.base.CommandError as e:
+                # MPD rejected the command, the connection itself is fine
+                logger.error(f"{e.__class__.__qualname__}: {e}")
+                value = None
             except Exception as e:
                 logger.error(f"{e.__class__.__qualname__}: {e}")
+                # The connection may be stuck in the middle of a reply: drop it, MpdLock reconnects on next access
+                self.mpd_client.disconnect()
                 value = None
         return value
 
@@ -252,8 +259,14 @@ class PlayerMPD:
         this method polls the status from mpd and stores the important inforamtion in the music_player_status,
         it will repeat itself in the intervall specified by self.mpd_status_poll_interval
         """
-        self.mpd_status.update(self.mpd_retry_with_mutex(self.mpd_client.status))
-        self.mpd_status.update(self.mpd_retry_with_mutex(self.mpd_client.currentsong))
+        status = self.mpd_retry_with_mutex(self.mpd_client.status)
+        current_song = self.mpd_retry_with_mutex(self.mpd_client.currentsong)
+        if status is None or current_song is None:
+            # MPD communication failed (already logged). Skip this cycle instead of raising:
+            # an exception would end the poll thread and the web app would get no more status updates
+            return
+        self.mpd_status.update(status)
+        self.mpd_status.update(current_song)
 
         if self.mpd_status.get('elapsed') is not None:
             self.current_folder_status["ELAPSED"] = self.mpd_status['elapsed']
@@ -526,33 +539,41 @@ class PlayerMPD:
         """
         base_filename = slugify(song_url)
 
-        try:
-            metadata_list = self.mpd_client.listallinfo(song_url)
-            metadata = {}
-            if metadata_list:
-                metadata = metadata_list[0]
+        # The status poll thread shares the MPD connection: without the lock, its replies get mixed
+        # with the binary picture data, which breaks both
+        with self.mpd_lock:
+            try:
+                metadata_list = self.mpd_client.listallinfo(song_url)
+                metadata = {}
+                if metadata_list:
+                    metadata = metadata_list[0]
 
-            if 'albumartist' in metadata and 'album' in metadata:
-                base_filename = slugify(f"{metadata['albumartist']}-{metadata['album']}")
+                if 'albumartist' in metadata and 'album' in metadata:
+                    base_filename = slugify(f"{metadata['albumartist']}-{metadata['album']}")
 
-            cache_filename = self.coverart_cache_manager.find_file_by_hash(base_filename)
+                cache_filename = self.coverart_cache_manager.find_file_by_hash(base_filename)
 
-            if cache_filename:
+                if cache_filename:
+                    return cache_filename
+
+                # Cache file does not exist
+                # Fetch cover art binary
+                album_art_data = self.mpd_client.readpicture(song_url)
+                if not album_art_data.get('binary'):
+                    # File has no embedded picture
+                    return ""
+
+                # Save to cache
+                cache_filename = self.coverart_cache_manager.save_to_cache(base_filename, album_art_data)
+
                 return cache_filename
 
-            # Cache file does not exist
-            # Fetch cover art binary
-            album_art_data = self.mpd_client.readpicture(song_url)
-
-            # Save to cache
-            cache_filename = self.coverart_cache_manager.save_to_cache(base_filename, album_art_data)
-
-            return cache_filename
-
-        except mpd.base.CommandError as e:
-            logger.error(f"{e.__class__.__qualname__}: {e} at uri {song_url}")
-        except Exception as e:
-            logger.error(f"{e.__class__.__qualname__}: {e} at uri {song_url}")
+            except mpd.base.CommandError as e:
+                logger.error(f"{e.__class__.__qualname__}: {e} at uri {song_url}")
+            except Exception as e:
+                logger.error(f"{e.__class__.__qualname__}: {e} at uri {song_url}")
+                # The connection may be stuck in the middle of a reply: drop it, MpdLock reconnects on next access
+                self.mpd_client.disconnect()
 
         return ""
 

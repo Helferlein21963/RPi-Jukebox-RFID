@@ -16,7 +16,8 @@ class CoverartCacheManager:
         return None
 
     def save_to_cache(self, base_filename, album_art_data):
-        mime_type = album_art_data['type']
+        # MPD only sends 'type' if it knows the MIME type
+        mime_type = album_art_data.get('type', 'image/jpeg')
         file_extension = 'jpg' if mime_type == 'image/jpeg' else mime_type.split('/')[-1]
         cache_filename = f"{base_filename}.{file_extension}"
 
