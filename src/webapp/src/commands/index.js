@@ -59,6 +59,17 @@ const commands = {
     plugin: 'ctrl',
     method: 'play',
   },
+  playlistinfo: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'playlistinfo'
+  },
+  play_song: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'play_song',
+    argKeys: ['songid']
+  },
   play_single: {
     _package: 'player',
     plugin: 'ctrl',

@@ -1,11 +1,20 @@
 import React, { memo } from 'react';
 import { dropLast } from "ramda";
+import { useTranslation } from 'react-i18next';
 
-import { List } from '@mui/material';
+import {
+  Grid,
+  IconButton,
+  List,
+  Typography,
+} from '@mui/material';
+
+import PlayCircleFilledRoundedIcon from '@mui/icons-material/PlayCircleFilledRounded';
 
 import FolderListItem from './folder-list-item';
 import FolderListItemBack from './folder-list-item-back';
 
+import request from '../../../../utils/request';
 import { ROOT_DIRS } from '../../../../config';
 
 const FolderList = ({
@@ -14,34 +23,58 @@ const FolderList = ({
   isSelecting,
   registerMusicToCard,
 }) => {
-  const getParentDir = (dir) => {
-    // TODO: ROOT_DIRS should be removed after paths are relative
-    const decodedDir = decodeURIComponent(dir);
+  const { t } = useTranslation();
+  const decodedDir = decodeURIComponent(dir);
+  // TODO: ROOT_DIRS should be removed after paths are relative
+  const isRootDir = ROOT_DIRS.includes(decodedDir);
 
-    if (ROOT_DIRS.includes(decodedDir)) return undefined;
+  const getParentDir = () => {
+    if (isRootDir) return undefined;
 
     const parentDir = dropLast(1, decodedDir.split('/')).join('/');
     return parentDir;
   }
 
-  const parentDir = getParentDir(dir);
+  const parentDir = getParentDir();
+
+  const playFolder = () => request('play_folder', { folder: decodedDir, recursive: true });
 
   return (
-    <List sx={{ width: '100%' }}>
-      {parentDir &&
-        <FolderListItemBack
-          dir={parentDir}
-        />
+    <>
+      {!isRootDir && !isSelecting &&
+        <Grid container sx={{ padding: '0 8px', alignItems: 'center', flexWrap: 'nowrap' }}>
+          <Typography
+            variant="h6"
+            sx={{ flexGrow: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {decodedDir.split('/').pop()}
+          </Typography>
+          <IconButton
+            aria-label={t('library.folders.play-folder')}
+            onClick={playFolder}
+            size="large"
+          >
+            <PlayCircleFilledRoundedIcon color="primary" style={{ fontSize: 64 }} />
+          </IconButton>
+        </Grid>
       }
-      {folders.map((folder, key) =>
-        <FolderListItem
-          key={key}
-          folder={folder}
-          isSelecting={isSelecting}
-          registerMusicToCard={registerMusicToCard}
-        />
-      )}
-    </List>
+      <List sx={{ width: '100%' }}>
+        {parentDir &&
+          <FolderListItemBack
+            dir={parentDir}
+          />
+        }
+        {folders.map((folder, key) =>
+          <FolderListItem
+            key={key}
+            dir={decodedDir}
+            folder={folder}
+            isSelecting={isSelecting}
+            registerMusicToCard={registerMusicToCard}
+          />
+        )}
+      </List>
+    </>
   );
 }
 

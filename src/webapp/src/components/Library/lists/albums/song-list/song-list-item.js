@@ -11,13 +11,14 @@ import { toHHMMSS } from '../../../../../utils/utils';
 import request from '../../../../../utils/request'
 
 const SongListItem = ({
+  album,
+  albumartist,
   isSelecting,
   registerMusicToCard,
   song,
 }) => {
   const { t } = useTranslation();
 
-  const command = 'play_single';
   const {
     artist,
     duration,
@@ -25,19 +26,20 @@ const SongListItem = ({
     title,
   } = song;
 
-  const playSingle = () => {
-    request(command, { song_url: file })
+  // Play the whole album, starting with this song
+  const playAlbumFromSong = () => {
+    request('play_album', { albumartist, album, start_song: file })
   }
 
   const registerSongToCard = () => (
-    registerMusicToCard(command, { song_url: file })
+    registerMusicToCard('play_single', { song_url: file })
   );
 
   return (
     <ListItem disablePadding>
       <ListItemButton
         role={undefined}
-        onClick={() => (isSelecting ? registerSongToCard() : playSingle())}
+        onClick={() => (isSelecting ? registerSongToCard() : playAlbumFromSong())}
       >
         <ListItemText
           primary={title || t('library.albums.unknown-title')}

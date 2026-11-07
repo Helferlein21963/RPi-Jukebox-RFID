@@ -13,25 +13,25 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import request from '../../../../utils/request';
 import FolderLink from './folder-link';
 import FolderTypeAvatar from './folder-type-avatar';
-import { DEFAULT_AUDIO_DIR } from '../../../../config';
+import { DEFAULT_AUDIO_DIR, ROOT_DIRS } from '../../../../config';
 
 const FolderListItem = ({
+  dir,
   folder,
   isSelecting,
   registerMusicToCard,
 }) => {
   const { t } = useTranslation();
   const { type, name, path } = folder;
+  const isDirectory = type === 'directory';
 
-  const playItem = () => {
-    switch(type) {
-      case 'directory': return request('play_folder', { folder: path, recursive: true });
-      case 'file': return request('play_single', { song_url: path.replace(`${DEFAULT_AUDIO_DIR}/`, '') });
-      // TODO: Add missing Podcast
-      // TODO: Add missing Stream
-      default: return;
-    }
-  }
+  // Play the whole folder that is shown, starting with this entry.
+  // Like the play button of the folder: recursive, except in the root folder (the whole library)
+  const playFolderFromItem = () => request('play_folder', {
+    folder: dir,
+    recursive: !ROOT_DIRS.includes(dir),
+    start_song: path,
+  });
 
   const registerItemToCard = () => {
     switch(type) {
@@ -43,11 +43,17 @@ const FolderListItem = ({
     }
   }
 
+  // Outside of card selection, clicking a folder shows its content
+  const opensFolder = isDirectory && !isSelecting;
+  const buttonProps = opensFolder
+    ? { component: FolderLink, data: { dir: path } }
+    : { onClick: () => (isSelecting ? registerItemToCard() : playFolderFromItem()) };
+
   return (
     <ListItem
       disablePadding
       secondaryAction={
-        type === 'directory'
+        isDirectory
           ? <IconButton
               component={FolderLink}
               data={{ dir: path }}
@@ -59,7 +65,7 @@ const FolderListItem = ({
           : undefined
       }
     >
-      <ListItemButton onClick={() => (isSelecting ? registerItemToCard() : playItem())}>
+      <ListItemButton {...buttonProps}>
         <FolderTypeAvatar type={type} />
         <ListItemText primary={name} />
       </ListItemButton>

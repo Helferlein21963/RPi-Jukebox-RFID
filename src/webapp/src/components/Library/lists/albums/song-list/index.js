@@ -76,6 +76,8 @@ const SongList = ({
               {songs.map(song =>
                 <SongListItem
                   key={song.track}
+                  album={decodeURIComponent(album)}
+                  albumartist={decodeURIComponent(artist)}
                   song={song}
                   isSelecting={isSelecting}
                   registerMusicToCard={registerMusicToCard}

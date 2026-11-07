@@ -565,7 +565,15 @@ class PlayerMPD:
         Will reset settings to folder config"""
         logger.debug("Replay")
         with self.mpd_lock:
-            self.play_folder(self.music_player_status['player_status']['last_played_folder'])
+            self._play_last_folder()
+
+    def _play_last_folder(self):
+        folder = self.music_player_status['player_status']['last_played_folder']
+        if not folder:
+            # E.g. an album or a single song was played last, or nothing since startup
+            logger.info("No folder played last: nothing to replay")
+            return
+        self.play_folder(folder)
 
     @plugs.tag
     def toggle(self):
@@ -593,7 +601,7 @@ class PlayerMPD:
         > but we keep it as it is specifically implemented in box 2.X"""
         with self.mpd_lock:
             if self.mpd_status['state'] == 'stop':
-                self.play_folder(self.music_player_status['player_status']['last_played_folder'])
+                self._play_last_folder()
 
     # Shuffle
     def _shuffle(self, random):
@@ -680,8 +688,37 @@ class PlayerMPD:
         raise NotImplementedError
 
     @plugs.tag
+    def play_song(self, songid: int):
+        """
+        Play a song of the current playlist
+
+        The playlist itself is not changed. The song is selected by its MPD song id (``id`` in
+        :meth:`playlistinfo`), not by its position: if the playlist has been replaced in the meantime
+        (e.g. by a card swipe), the id no longer exists and nothing happens instead of playing a wrong song.
+
+        :param songid: MPD song id
+        """
+        logger.debug(f"Play song with id {songid}")
+        with self.mpd_lock:
+            try:
+                self.mpd_client.playid(int(songid))
+            except mpd.base.CommandError as e:
+                logger.warning(f"Song {songid} is no longer in the playlist: {e}")
+
+    def _forget_folder(self):
+        """
+        Playing something other than a folder (album, single song): no folder is current any more
+
+        So the playback position is not remembered for the folder played before, and a swipe of that
+        folder's card is a first swipe (continue the folder) instead of a second swipe (e.g. pause).
+        """
+        self.music_player_status['player_status']['last_played_folder'] = ''
+        self.current_folder_status = {}
+
+    @plugs.tag
     def play_single(self, song_url):
         with self.mpd_lock:
+            self._forget_folder()
             self.mpd_client.clear()
             self.mpd_client.addid(song_url)
             self.mpd_client.play()
@@ -801,7 +838,8 @@ class PlayerMPD:
         return plc.playlist
 
     @plugs.tag
-    def play_folder(self, folder: str, recursive: bool = False, resume: bool = False) -> None:
+    def play_folder(self, folder: str, recursive: bool = False, resume: bool = False,
+                    start_song: Optional[str] = None) -> None:
         """
         Playback a music folder.
 
@@ -811,17 +849,22 @@ class PlayerMPD:
         :param folder: Folder path relative to music library path
         :param recursive: Add folder recursively
         :param resume: Continue at the remembered song and position of this folder instead of the first song
+        :param start_song: Start with this song of the folder instead of the first one (path as returned by
+            :meth:`get_folder_content`). Takes precedence over ``resume``.
         """
         with self.mpd_lock:
-            logger.info(f"Play folder: '{folder}'{' (resume)' if resume else ''}")
+            logger.info(f"Play folder: '{folder}'{' (resume)' if resume else ''}"
+                        f"{f' starting at {start_song}' if start_song else ''}")
             self.mpd_client.clear()
 
             plc = playlistgenerator.PlaylistCollector(components.player.get_music_library_path())
             plc.parse(folder, recursive)
+            added = []
             uri = '--unset--'
             try:
                 for uri in plc:
                     self.mpd_client.addid(uri)
+                    added.append(uri)
             except mpd.base.CommandError as e:
                 logger.error(f"{e.__class__.__qualname__}: {e} at uri {uri}")
             except Exception as e:
@@ -833,8 +876,28 @@ class PlayerMPD:
             if self.current_folder_status is None:
                 self.current_folder_status = self.music_player_status['audio_folder_status'][folder] = {}
 
-            if not (resume and self._seek_to_saved_position()):
+            start_pos = self._find_in_playlist(added, start_song) if start_song else None
+            if start_pos is not None:
+                self.mpd_client.play(start_pos)
+            elif not (resume and self._seek_to_saved_position()):
                 self.mpd_client.play()
+
+    @staticmethod
+    def _find_in_playlist(uris, song: str) -> Optional[int]:
+        """
+        Position of song in the list of uris added to the playlist, or None if it is not in there
+
+        File paths are compared normalized; streams and podcasts (URLs) as they are.
+        """
+        def normalize(uri):
+            return uri if '://' in uri else os.path.normpath(uri)
+
+        wanted = normalize(song)
+        for pos, uri in enumerate(uris):
+            if uri == song or normalize(uri) == wanted:
+                return pos
+        logger.info(f"Song '{song}' is not in the folder: start with the first song")
+        return None
 
     def _seek_to_saved_position(self) -> bool:
         """
@@ -859,7 +922,7 @@ class PlayerMPD:
         return True
 
     @plugs.tag
-    def play_album(self, albumartist: str, album: str):
+    def play_album(self, albumartist: str, album: str, start_song: Optional[str] = None):
         """
         Playback a album found in MPD database.
 
@@ -868,12 +931,20 @@ class PlayerMPD:
 
         :param albumartist: Artist of the Album provided by MPD database
         :param album: Album name provided by MPD database
+        :param start_song: Start with this song of the album instead of the first one (``file`` as provided by
+            the MPD database)
         """
         with self.mpd_lock:
-            logger.info(f"Play album: '{album}' by '{albumartist}")
+            logger.info(f"Play album: '{album}' by '{albumartist}"
+                        f"{f' starting at {start_song}' if start_song else ''}")
+            self._forget_folder()
             self.mpd_client.clear()
             self.mpd_retry_with_mutex(self.mpd_client.findadd, 'albumartist', albumartist, 'album', album)
-            self.mpd_client.play()
+            songs = self.mpd_client.playlistfind('file', start_song) if start_song else []
+            if songs:
+                self.mpd_client.play(int(songs[0]['pos']))
+            else:
+                self.mpd_client.play()
 
     @plugs.tag
     def queue_load(self, folder):

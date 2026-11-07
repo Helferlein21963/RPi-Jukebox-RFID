@@ -141,7 +141,8 @@
       "no-music": "No music found!",
       "empty-folder": "This folder is empty!",
       "show-folder-content": "Show folder content",
-      "back-button-label": "Back"
+      "back-button-label": "Back",
+      "play-folder": "Play folder"
     },
     "albums": {
       "unknown-album": "Unknown album",
@@ -183,6 +184,10 @@
       "unknown-title": "Unknown title",
       "unknown-artist": "Unknown artists",
       "no-song-in-queue": "No song in queue"
+    },
+    "playlist": {
+      "title": "Playlist ({{count}} songs)",
+      "unknown-title": "Unknown title"
     },
     "seekbar": {
       "song-position": "Current position"

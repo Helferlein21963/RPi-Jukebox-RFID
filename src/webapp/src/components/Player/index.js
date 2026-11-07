@@ -5,6 +5,7 @@ import Grid from '@mui/material/Grid';
 import Cover from './cover';
 import Controls from './controls';
 import Display from './display';
+import Playlist from './playlist';
 import SeekBar from './seekbar';
 import Volume from './volume';
 
@@ -68,6 +69,8 @@ const Player = () => {
           paddingLeft: '30px',
           paddingRight: '30px',
           minHeight: 'calc(100vh - 64px - 10px)',
+          // Keep the rows at the top instead of spreading them over the screen height
+          alignContent: 'flex-start',
           backdropFilter: 'blur(25px)',
         }}
       >
@@ -79,6 +82,9 @@ const Player = () => {
           <SeekBar />
           <Controls />
           <Volume />
+        </Grid>
+        <Grid item xs={12} sx={{ paddingBottom: '20px' }}>
+          <Playlist />
         </Grid>
       </Grid>
     </Grid>

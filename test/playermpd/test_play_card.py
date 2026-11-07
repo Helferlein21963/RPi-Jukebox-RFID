@@ -191,6 +191,99 @@ def test_play_folder_from_web_app_starts_with_first_song(player):
     player.mpd_client.play.assert_called_once_with()
 
 
+@pytest.mark.parametrize('resume', [False, True])
+def test_play_folder_starts_at_selected_song(player, resume):
+    player.mpd_client.playlistfind.return_value = [{'file': 'A/02.mp3', 'pos': '1'}]
+
+    player.play_folder(FOLDER_A, resume=resume, start_song='A/03.mp3')
+
+    player.mpd_client.play.assert_called_once_with(2)
+    player.mpd_client.seek.assert_not_called()
+    assert player.music_player_status['player_status']['last_played_folder'] == FOLDER_A
+
+
+def test_play_folder_compares_normalized_paths(player):
+    player.play_folder(FOLDER_A, start_song='A/./sub/../02.mp3')
+
+    player.mpd_client.play.assert_called_once_with(1)
+
+
+def test_play_folder_unknown_start_song_starts_with_first_song(player):
+    player.play_folder(FOLDER_A, start_song='A/99.mp3')
+
+    player.mpd_client.play.assert_called_once_with()
+
+
+def test_play_song_plays_song_by_id(player):
+    player.play_song('17')
+
+    player.mpd_client.playid.assert_called_once_with(17)
+    player.mpd_client.clear.assert_not_called()
+
+
+def test_play_song_no_longer_in_playlist_does_nothing(player):
+    # The playlist was replaced (e.g. card swipe) before the click in the web app arrived
+    player.mpd_client.playid.side_effect = playermpd.mpd.base.CommandError('No such song')
+
+    player.play_song('17')
+
+    player.mpd_client.play.assert_not_called()
+
+
+@pytest.mark.parametrize('play_other', [
+    lambda p: p.play_album('Artist', 'Album'),
+    lambda p: p.play_single('Artist/Album/01.mp3'),
+])
+def test_album_or_single_song_keeps_folder_position(player, play_other):
+    player.mpd_retry_with_mutex = mock.Mock()
+    folder_status = start_folder_a(player)
+
+    play_other(player)
+    poll(player, 'play', song='5', elapsed='10.0', file='Artist/Album/06.mp3')
+
+    assert folder_status['CURRENTFILENAME'] == 'A/02.mp3'
+    assert folder_status['ELAPSED'] == '42.5'
+    assert player.music_player_status['player_status']['last_played_folder'] == ''
+
+
+def test_card_after_album_is_first_swipe(player):
+    player.mpd_retry_with_mutex = mock.Mock(return_value={'state': 'play'})
+    start_folder_a(player)
+    player.play_album('Artist', 'Album')
+    player.mpd_client.reset_mock()
+    player.mpd_client.playlistfind.return_value = [{'file': 'A/02.mp3', 'pos': '1'}]
+
+    player.play_card(FOLDER_A)
+
+    player.second_swipe_action.assert_not_called()
+    player.mpd_client.seek.assert_called_once_with('1', '42.5')
+
+
+def test_replay_without_last_folder_does_nothing(player):
+    player.replay()
+
+    player.mpd_client.clear.assert_not_called()
+
+
+def test_play_album_starts_at_selected_song(player):
+    player.mpd_retry_with_mutex = mock.Mock()
+    player.mpd_client.playlistfind.return_value = [{'file': 'Artist/Album/02.mp3', 'pos': '1'}]
+
+    player.play_album('Artist', 'Album', start_song='Artist/Album/02.mp3')
+
+    player.mpd_client.playlistfind.assert_called_once_with('file', 'Artist/Album/02.mp3')
+    player.mpd_client.play.assert_called_once_with(1)
+
+
+def test_play_album_without_start_song_starts_with_first_song(player):
+    player.mpd_retry_with_mutex = mock.Mock()
+
+    player.play_album('Artist', 'Album')
+
+    player.mpd_client.playlistfind.assert_not_called()
+    player.mpd_client.play.assert_called_once_with()
+
+
 @pytest.mark.parametrize('state', ['play', 'pause'])
 def test_toggle_pauses_and_resumes(player, state):
     player.mpd_client.status.return_value = {'state': state}
