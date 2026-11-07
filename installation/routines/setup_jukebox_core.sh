@@ -107,6 +107,10 @@ _jukebox_core_register_as_service() {
 
   systemctl --user daemon-reload
   systemctl --user enable jukebox-daemon.service
+
+  # Start the user services (mpd, pulseaudio, jukebox) at boot without waiting for a login.
+  # Otherwise they depend on the console autologin, which is also a few seconds slower
+  sudo loginctl enable-linger "${CURRENT_USER}"
 }
 
 _jukebox_core_check() {
@@ -144,6 +148,13 @@ _jukebox_core_check() {
     verify_file_contains_string "${INSTALLATION_PATH}" "${JUKEBOX_SERVICE_NAME}"
 
     verify_service_enablement jukebox-daemon.service enabled --user
+
+    log "  Verify lingering is enabled for user '${CURRENT_USER}'"
+    local linger=$(loginctl show-user "${CURRENT_USER}" --property=Linger --value)
+    if [[ "${linger}" != "yes" ]]; then
+        exit_on_error "ERROR: Lingering for user '${CURRENT_USER}' is '${linger}', expected 'yes'!"
+    fi
+    log "  CHECK"
 }
 
 _run_setup_jukebox_core() {

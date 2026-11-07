@@ -8,6 +8,8 @@ Description=Jukebox Daemon
 # https://unix.stackexchange.com/questions/390898/understanding-systemd-requires-option
 After=network.target sound.target mpd.service pulseaudio.service
 Requires=mpd.service pulseaudio.service
+# Never give up restarting: without this, 5 quick failures within 10 s would leave the Jukebox stopped for good
+StartLimitIntervalSec=0
 
 [Service]
 WorkingDirectory=%%INSTALLATION_PATH%%
@@ -15,6 +17,9 @@ ExecStart=/bin/bash -c '%%INSTALLATION_PATH%%/run_jukebox.sh'
 StandardOutput=inherit
 StandardError=inherit
 Restart=always
+RestartSec=2
+# The daemon limits its own shutdown to 10 s. If it still hangs, do not delay shutdown / reboot for the default 90 s
+TimeoutStopSec=20
 # ConditionUser=!root
 
 #  One of these sandbox settings prevents using sudo shutdown from inside the service
