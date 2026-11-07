@@ -665,10 +665,17 @@ class PlayerMPD:
                     return cache_filename
 
                 # Cache file does not exist
-                # Fetch cover art binary
+                # Fetch cover art binary: picture embedded in the song file first,
+                # then a cover image in the song's folder (cover.jpg, cover.png, ...)
                 album_art_data = self.mpd_client.readpicture(song_url)
                 if not album_art_data.get('binary'):
-                    # File has no embedded picture
+                    try:
+                        album_art_data = self.mpd_client.albumart(song_url)
+                    except mpd.base.CommandError:
+                        # MPD reports a missing cover file as error
+                        album_art_data = {}
+                if not album_art_data.get('binary'):
+                    logger.debug(f"No cover art for {song_url}")
                     return ""
 
                 # Save to cache

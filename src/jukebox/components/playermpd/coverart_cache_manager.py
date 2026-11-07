@@ -10,8 +10,10 @@ class CoverartCacheManager:
         self.cache_folder_path = os.path.expanduser(coverart_cache_path)
 
     def find_file_by_hash(self, hash_value):
+        """Return the cached file whose name (without extension) is exactly ``hash_value``, or None"""
+        # Compare the whole name: a prefix match would e.g. return the cover of 'folge-10' for 'folge-1'
         for filename in os.listdir(self.cache_folder_path):
-            if filename.startswith(hash_value):
+            if os.path.splitext(filename)[0] == hash_value:
                 return filename
         return None
 

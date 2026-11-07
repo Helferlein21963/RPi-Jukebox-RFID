@@ -19,20 +19,37 @@ const Player = () => {
   const [backgroundImage, setBackgroundImage] = useState('none');
 
   useEffect(() => {
-    const getCoverArt = async () => {
-      const { result } = await request('getSingleCoverArt', { song_url: file });
-      if (result) {
-        setCoverImage(`/cover-cache/${result}`);
+    // Set when the song changes again before the request returns, so a late reply
+    // for the previous song can't overwrite the cover of the current one
+    let outdated = false;
+
+    const showCover = (filename) => {
+      if (outdated) return;
+      if (filename) {
+        setCoverImage(`/cover-cache/${filename}`);
         setBackgroundImage([
           'linear-gradient(to bottom, rgba(18, 18, 18, 0.5), rgba(18, 18, 18, 1))',
-          `url(/cover-cache/${result})`
+          `url(/cover-cache/${filename})`
         ].join(','));
-      };
-    }
+      } else {
+        // No cover for this song: don't keep showing the previous song's cover
+        setCoverImage(undefined);
+        setBackgroundImage('none');
+      }
+    };
+
+    const getCoverArt = async () => {
+      const { result } = await request('getSingleCoverArt', { song_url: file });
+      showCover(result);
+    };
 
     if (file) {
       getCoverArt();
+    } else {
+      showCover(undefined);
     }
+
+    return () => { outdated = true; };
   }, [file]);
 
   return (
