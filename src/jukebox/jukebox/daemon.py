@@ -6,6 +6,7 @@ import signal
 import logging
 import time
 import atexit
+import itertools
 from typing import (Optional)
 
 from misc import flatten
@@ -20,6 +21,10 @@ import jukebox.cfghandler
 
 logger = logging.getLogger('jb.daemon')
 cfg = jukebox.cfghandler.get_handler('jukebox')
+
+#: Signals within this time [s] after the last counted signal are duplicates and ignored.
+#: On stop, systemd sends SIGTERM to every thread of the process, so one stop request often arrives several times
+DUPLICATE_SIGNAL_WINDOW = 0.5
 
 
 @atexit.register
@@ -44,7 +49,8 @@ class JukeBox:
         logger.info(f"Git state: {self._git_state}")
 
         self.nvm = nv_manager()
-        self._signal_cnt = 0
+        self._signal_counter = itertools.count(1)
+        self._last_signal_time = None
         self.rpc_server = None
         jukebox.cfghandler.load_yaml(cfg, configuration_file)
 
@@ -66,16 +72,26 @@ class JukeBox:
 
         On first Ctrl-C (or SIGTERM) orderly shutdown procedure is embarked upon. It gets allocated a time-out!
         On third Ctrl-C (or SIGTERM), this is interrupted and there will be a hard exit!
+
+        Signals within :data:`DUPLICATE_SIGNAL_WINDOW` after the last counted one are ignored: systemd sends SIGTERM
+        to every thread of the process, so the same stop request often arrives several times. Such a duplicate can
+        even interrupt this handler (Python runs signal handlers in the main thread between byte codes). Therefore,
+        each call takes its count once, atomically, and only uses this local value.
         """
         # systemd: By default, a SIGTERM is sent, followed by 90 seconds of waiting followed by a SIGKILL.
         # Pressing Ctrl-C gives SIGINT
-        self._signal_cnt += 1
+        now = time.monotonic()
+        if self._last_signal_time is not None and now - self._last_signal_time < DUPLICATE_SIGNAL_WINDOW:
+            logger.debug(f"Ignoring duplicate signal '{signal.Signals(esignal).name}'")
+            return
+        self._last_signal_time = now
+        signal_cnt = next(self._signal_counter)
         timeout: float = 10.0
         time_start = time.time_ns()
-        msg = f"Received signal '{signal.Signals(esignal).name}'. Count = {self._signal_cnt}"
+        msg = f"Received signal '{signal.Signals(esignal).name}'. Count = {signal_cnt}"
         print(msg)
         logger.debug(msg)
-        if self._signal_cnt == 1:
+        if signal_cnt == 1:
             # Put the shutdown procedure into a thread, so we can make a time-out on it
             # Cannot use threading.Timer for the timeout, as sys.exit() must be called from main thread
             t = threading.Thread(target=self.exit_gracefully, args=[esignal, timeout], daemon=True, name="ShutdownThread")
@@ -91,9 +107,9 @@ class JukeBox:
                 sys.exit(1)
             logger.info(f"Shutdown time: {((time.time_ns() - time_start) / 1000000.0):.3f} ms")
             sys.exit(0)
-        elif self._signal_cnt == 2:
+        elif signal_cnt == 2:
             print("Waiting for closing down procedure to complete. Pressing Ctrl-C again will close Jukebox down immediately.")
-        if self._signal_cnt == 3:
+        if signal_cnt == 3:
             sys.exit(1)
 
     def exit_gracefully(self, esignal, timeout):
