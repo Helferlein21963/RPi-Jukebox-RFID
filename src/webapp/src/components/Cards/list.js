@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
 import { Link } from 'react-router-dom';
-import { isNil, reject } from 'ramda';
+import { flatten, isNil, reject } from 'ramda';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -14,8 +14,19 @@ import {
 
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 
+import { toLibraryPath, useMusicLibraryPath } from '../Library/now-playing';
+import { DEFAULT_AUDIO_DIR } from '../../config';
+
+// Folders inside the music library are shown relative to it
+const toDisplayPath = (path, libraryPath) => (
+  typeof path === 'string'
+    ? toLibraryPath(path, libraryPath).replace(`${DEFAULT_AUDIO_DIR}/`, '')
+    : path
+);
+
 const CardsList = ({ cardsList }) => {
   const { t } = useTranslation();
+  const libraryPath = useMusicLibraryPath();
 
   const ListItemLink = (cardId) => {
     const EditCardLink = forwardRef((props, ref) => {
@@ -28,12 +39,13 @@ const CardsList = ({ cardsList }) => {
       return <Link ref={ref} to={location} {...props} />
     });
 
-    const description = cardsList[cardId].from_alias
+    const { from_alias, action, func } = cardsList[cardId];
+    const description = from_alias
       ? reject(
           isNil,
-          [cardsList[cardId].from_alias, cardsList[cardId].action.args]
-        ).join(', ')
-      : cardsList[cardId].func
+          flatten([from_alias, action?.args])
+        ).map(arg => toDisplayPath(arg, libraryPath)).join(', ')
+      : func
 
     return (
       <ListItem
@@ -64,4 +76,5 @@ const CardsList = ({ cardsList }) => {
   );
 }
 
+export { toDisplayPath };
 export default React.memo(CardsList);
