@@ -90,3 +90,11 @@ Log all cards that are ignored due to same_id_delay. This is a option for develo
 ### Second Swipe
 
 Looking for 'Second Swipe' option? That is part of the Player configuration and not part of the RFID configuration, as the 'Second Swipe' action needs to take into account the player state, which can also be altered through the WebUI.
+
+Music cards with the `play_folder` action (as registered through the Web App) are passed to `player.ctrl.play_card`, which decides:
+
+* The card's folder is playing or paused: run the configured second swipe action (`playermpd.second_swipe_action`, e.g. `toggle` for pause / resume).
+* Otherwise (another folder was played in between, or this folder was stopped): play the folder and continue at the song and position where it was left last time. A folder that has played to its end starts with the first song again. `rewind` (e.g. on a long button press) restarts the current folder with the first song.
+
+> [!NOTE]
+> Readers that are not place-capable, e.g. most [USB-based RFID readers](genericusb.md), can also report a read when a card is *removed*. A card that was left lying on such a reader then triggers the second swipe action on removal. Reads of the same card within `same_id_delay` are ignored, which covers double reads while placing a card.

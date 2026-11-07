@@ -58,6 +58,18 @@ cmd_alias_definitions = {
         'plugin': 'ctrl',
         'method': 'prev',
         'ignore_card_removal_action': True},
+    'prev_or_restart_song': {
+        'package': 'player',
+        'plugin': 'ctrl',
+        'method': 'prev_or_restart_song',
+        'note': 'Restart the current song, or play the previous song if the current one has just started',
+        'ignore_card_removal_action': True},
+    'rewind': {
+        'package': 'player',
+        'plugin': 'ctrl',
+        'method': 'rewind',
+        'note': 'Restart the current folder with the first song',
+        'ignore_card_removal_action': True},
     'toggle': {
         'package': 'player',
         'plugin': 'ctrl',

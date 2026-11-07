@@ -104,6 +104,18 @@ from .coverart_cache_manager import CoverartCacheManager
 logger = logging.getLogger('jb.PlayerMPD')
 cfg = jukebox.cfghandler.get_handler('jukebox')
 
+#: Remaining time [s] of the last song, below which a following stop counts as "playlist has played to its end"
+PLAYLIST_END_MARGIN = 2.0
+
+
+def _is_last_song_ending(status: dict) -> bool:
+    """Return True if the MPD status shows the last song of the playlist within its final seconds"""
+    try:
+        return (int(status['song']) == int(status['playlistlength']) - 1
+                and float(status['duration']) - float(status['elapsed']) < PLAYLIST_END_MARGIN)
+    except (KeyError, ValueError):
+        return False
+
 
 class MpdLock:
     def __init__(self, client: mpd.MPDClient, host: str, port: int):
@@ -196,6 +208,10 @@ class PlayerMPD:
 
         self.old_song = None
         self.mpd_status = {}
+        # For detecting state changes in the status poll (see _track_folder_position)
+        self._last_state = None
+        self._was_near_playlist_end = False
+        self._saved_folder = None
         self.mpd_status_poll_interval = 0.25
         self.mpd_lock = MpdLock(self.mpd_client, self.mpd_host, 6600)
         self.status_is_closing = False
@@ -267,21 +283,8 @@ class PlayerMPD:
             return
         self.mpd_status.update(status)
         self.mpd_status.update(current_song)
-
-        if self.mpd_status.get('elapsed') is not None:
-            self.current_folder_status["ELAPSED"] = self.mpd_status['elapsed']
-            self.music_player_status['player_status']["CURRENTSONGPOS"] = self.mpd_status['song']
-            self.music_player_status['player_status']["CURRENTFILENAME"] = self.mpd_status['file']
-
-        if self.mpd_status.get('file') is not None:
-            self.current_folder_status["CURRENTFILENAME"] = self.mpd_status['file']
-            self.current_folder_status["CURRENTSONGPOS"] = self.mpd_status['song']
-            self.current_folder_status["ELAPSED"] = self.mpd_status.get('elapsed', '0.0')
-            self.current_folder_status["PLAYSTATUS"] = self.mpd_status['state']
-            self.current_folder_status["RESUME"] = "OFF"
-            self.current_folder_status["SHUFFLE"] = "OFF"
-            self.current_folder_status["LOOP"] = "OFF"
-            self.current_folder_status["SINGLE"] = "OFF"
+        # Use the fresh status/current_song here: self.mpd_status still contains keys of songs played before
+        self._track_folder_position(status, current_song)
 
         # Delete the volume key to avoid confusion
         # Volume is published via the 'volume' component!
@@ -290,6 +293,44 @@ class PlayerMPD:
         except KeyError:
             pass
         publishing.get_publisher().send('playerstatus', self.mpd_status)
+
+    def _track_folder_position(self, status: dict, current_song: dict):
+        """
+        Remember song and position of the current folder, so a later :meth:`play_card` continues there
+
+        * Position is only updated while playing or paused. Once stopped, MPD reports the song start, but we want
+          to continue where the playback was stopped.
+        * When the playlist has played to its end, the position is cleared: the next start begins with the first song.
+        * The status file is saved on pause / stop and on folder change, so positions survive a power cut.
+        """
+        state = status.get('state')
+        if state in ('play', 'pause') and 'file' in current_song:
+            self.current_folder_status["CURRENTFILENAME"] = current_song['file']
+            self.current_folder_status["CURRENTSONGPOS"] = status.get('song', '0')
+            self.current_folder_status["ELAPSED"] = status.get('elapsed', '0.0')
+            self.current_folder_status["PLAYSTATUS"] = state
+            self.current_folder_status["RESUME"] = "OFF"
+            self.current_folder_status["SHUFFLE"] = "OFF"
+            self.current_folder_status["LOOP"] = "OFF"
+            self.current_folder_status["SINGLE"] = "OFF"
+            self.music_player_status['player_status']["CURRENTSONGPOS"] = status.get('song', '0')
+            self.music_player_status['player_status']["CURRENTFILENAME"] = current_song['file']
+        elif state == 'stop' and self._last_state == 'play':
+            if self._was_near_playlist_end:
+                logger.info("Playlist finished: next start of this folder begins with the first song")
+                for key in ('CURRENTFILENAME', 'CURRENTSONGPOS', 'ELAPSED'):
+                    self.current_folder_status.pop(key, None)
+            self.current_folder_status["PLAYSTATUS"] = 'stop'
+
+        folder = self.music_player_status['player_status'].get('last_played_folder')
+        if (state != self._last_state and state in ('pause', 'stop')) or folder != self._saved_folder:
+            # Under the lock: play_folder adds folder entries to the status dict (only) while holding it
+            with self.mpd_lock:
+                self.music_player_status.save_to_json()
+            self._saved_folder = folder
+
+        self._was_near_playlist_end = state == 'play' and _is_last_song_ending(status)
+        self._last_state = state
 
     # MPD can play absolute paths but can find songs in its database only by relative path
     # This function aims to prepare the song_url accordingly
@@ -344,6 +385,23 @@ class PlayerMPD:
             self.mpd_client.previous()
 
     @plugs.tag
+    def prev_or_restart_song(self, restart_threshold: float = 3.0):
+        """
+        Jump to the start of the current song, or to the previous song if pressed again shortly after (like a CD player)
+
+        :param restart_threshold: If the current song has played for less than this time in seconds,
+            go to the previous song instead of restarting the current one
+        """
+        with self.mpd_lock:
+            status = self.mpd_client.status()
+            if status.get('state') in ('play', 'pause') and float(status.get('elapsed', 0)) >= restart_threshold:
+                logger.debug("Restart song")
+                self.mpd_client.seekcur(0)
+            else:
+                logger.debug("Prev")
+                self.mpd_client.previous()
+
+    @plugs.tag
     def next(self):
         """Play next track in current playlist"""
         logger.debug("Next")
@@ -360,10 +418,13 @@ class PlayerMPD:
         """
         Re-start current playlist from first track
 
+        This also resets the remembered position of the folder (see :meth:`play_card`).
+
         Note: Will not re-read folder config, but leave settings untouched"""
         logger.debug("Rewind")
         with self.mpd_lock:
-            self.mpd_client.play(1)
+            # MPD playlist positions start at 0
+            self.mpd_client.play(0)
 
     @plugs.tag
     def replay(self):
@@ -497,40 +558,34 @@ class PlayerMPD:
         """
         Main entry point for trigger music playing from RFID reader. Decodes second swipe options before playing folder content
 
-        Checks for second (or multiple) trigger of the same folder and calls first swipe / second swipe action
-        accordingly.
+        * Second swipe: the folder is the current one and is playing or paused. Runs the configured
+          second swipe action (``playermpd.second_swipe_action``, e.g. ``toggle`` for pause / resume).
+        * First swipe: any other case, e.g. another folder is loaded (from a card or the web app), or this folder
+          has been stopped or has played to its end. Plays the folder and continues at the remembered song and
+          position of this folder. A folder that has played to its end starts with the first song again.
 
         :param folder: Folder path relative to music library path
         :param recursive: Add folder recursively
         """
-        # Developers notes:
-        #
-        #     * 2nd swipe trigger may also happen, if playlist has already stopped playing
-        #       --> Generally, treat as first swipe
-        #     * 2nd swipe of same Card ID may also happen if a different song has been played in between from WebUI
-        #       --> Treat as first swipe
-        #     * With place-not-swipe: Card is placed on reader until playlist expieres. Music stop. Card is removed and
-        #       placed again on the reader: Should be like first swipe
-        #     * TODO: last_played_folder is restored after box start, so first swipe of last played card may look like
-        #       second swipe
-        #
-        logger.debug(f"last_played_folder = {self.music_player_status['player_status']['last_played_folder']}")
         with self.mpd_lock:
-            is_second_swipe = self.music_player_status['player_status']['last_played_folder'] == folder
-        if self.second_swipe_action is not None and is_second_swipe:
-            logger.debug('Calling second swipe action')
+            last_played_folder = self.music_player_status['player_status']['last_played_folder']
+            status = self.mpd_retry_with_mutex(self.mpd_client.status) or {}
+            is_second_swipe = last_played_folder == folder and status.get('state') in ('play', 'pause')
+            logger.debug(f"last_played_folder = {last_played_folder}, state = {status.get('state')}")
+            if self.second_swipe_action is not None and is_second_swipe:
+                logger.debug('Calling second swipe action')
 
-            # run callbacks before second_swipe_action is invoked
-            play_card_callbacks.run_callbacks(folder, PlayCardState.secondSwipe)
+                # run callbacks before second_swipe_action is invoked
+                play_card_callbacks.run_callbacks(folder, PlayCardState.secondSwipe)
 
-            self.second_swipe_action()
-        else:
-            logger.debug('Calling first swipe action')
+                self.second_swipe_action()
+            else:
+                logger.debug('Calling first swipe action')
 
-            # run callbacks before play_folder is invoked
-            play_card_callbacks.run_callbacks(folder, PlayCardState.firstSwipe)
+                # run callbacks before play_folder is invoked
+                play_card_callbacks.run_callbacks(folder, PlayCardState.firstSwipe)
 
-            self.play_folder(folder, recursive)
+                self.play_folder(folder, recursive, resume=True)
 
     @plugs.tag
     def get_single_coverart(self, song_url):
@@ -597,7 +652,7 @@ class PlayerMPD:
         return plc.playlist
 
     @plugs.tag
-    def play_folder(self, folder: str, recursive: bool = False) -> None:
+    def play_folder(self, folder: str, recursive: bool = False, resume: bool = False) -> None:
         """
         Playback a music folder.
 
@@ -606,10 +661,10 @@ class PlayerMPD:
 
         :param folder: Folder path relative to music library path
         :param recursive: Add folder recursively
+        :param resume: Continue at the remembered song and position of this folder instead of the first song
         """
-        # TODO: This changes the current state -> Need to save last state
         with self.mpd_lock:
-            logger.info(f"Play folder: '{folder}'")
+            logger.info(f"Play folder: '{folder}'{' (resume)' if resume else ''}")
             self.mpd_client.clear()
 
             plc = playlistgenerator.PlaylistCollector(components.player.get_music_library_path())
@@ -629,7 +684,30 @@ class PlayerMPD:
             if self.current_folder_status is None:
                 self.current_folder_status = self.music_player_status['audio_folder_status'][folder] = {}
 
-            self.mpd_client.play()
+            if not (resume and self._seek_to_saved_position()):
+                self.mpd_client.play()
+
+    def _seek_to_saved_position(self) -> bool:
+        """
+        Start playback of the loaded folder at its remembered song and position
+
+        :return: False if there is nothing to continue: no position saved, or the song is no longer in the folder
+        """
+        filename = self.current_folder_status.get('CURRENTFILENAME')
+        if not filename:
+            return False
+        try:
+            songs = self.mpd_client.playlistfind('file', filename)
+            if not songs:
+                logger.info(f"Remembered song '{filename}' is no longer in the folder: start with the first song")
+                return False
+            elapsed = self.current_folder_status.get('ELAPSED', '0.0')
+            logger.info(f"Continue at '{filename}', {elapsed}s")
+            self.mpd_client.seek(songs[0]['pos'], elapsed)
+        except mpd.base.CommandError as e:
+            logger.error(f"Could not continue at remembered position: {e.__class__.__qualname__}: {e}")
+            return False
+        return True
 
     @plugs.tag
     def play_album(self, albumartist: str, album: str):

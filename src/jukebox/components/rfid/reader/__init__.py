@@ -21,6 +21,19 @@ cfg_main = jukebox.cfghandler.get_handler('jukebox')
 cfg_cards = jukebox.cfghandler.get_handler('cards')
 
 
+def swipe_aware_action(card_action: dict) -> dict:
+    """
+    Route folder cards through ``player.ctrl.play_card``, which handles second swipes
+
+    The web app registers music cards with ``play_folder``, which always starts from the beginning.
+    ``play_card`` has the same arguments, but pauses / resumes when the folder is already playing and
+    otherwise continues where the folder was left last time.
+    """
+    if card_action.get('package') == 'player' and card_action.get('method') == 'play_folder':
+        return {**card_action, 'method': 'play_card'}
+    return card_action
+
+
 class RfidCardDetectState(Enum):
     received = 0,
     isRegistered = 1
@@ -171,18 +184,16 @@ class ReaderRunner(threading.Thread):
                     if valid_for_removal_action and self._timer_thread is not None and card_id == previous_id:
                         self._timer_thread.trigger.set()
 
-
                     is_same_card = (card_id == previous_id)
-                    elapsed = time.time() - previous_time
-                    is_within_delay = elapsed < self._cfg_same_id_delay
+                    is_within_delay = (time.time() - previous_time) < self._cfg_same_id_delay
 
-                    if is_same_card and not is_within_delay:
-                        self._logger.info(f"Second swipe detected for card id = '{card_id}' → toggle or replay")
-                        plugs.call_ignore_errors('player', 'ctrl', 'toggle')
-                        plugs.call_ignore_errors('player', 'ctrl', 'replay_if_stopped')
-                        previous_time = time.time()
-                    elif not is_same_card:
-                        # (2) Log this: do this first to provide log entry in case something does not run 
+                    if is_same_card and is_within_delay:
+                        # Same card again within same_id_delay: a double read or the card is still on the reader
+                        if self._cfg_log_ignored_cards is True:
+                            self._logger.debug(f"Ignoring card id {card_id} due to same-card-delay "
+                                               f"({self._cfg_same_id_delay}s)")
+                    else:
+                        # (2) Log this: do this first to provide log entry in case something does not run
                         previous_id = card_id
                         valid_for_removal_action = False
 
@@ -225,6 +236,7 @@ class ReaderRunner(threading.Thread):
                                 # TODO: This call happens from the reader thread, which is not necessarily what we want ...
                                 # TODO: Change to RPC call to transfer execution into main thread
                                 rfid_card_detect_callbacks.run_callbacks(card_id, RfidCardDetectState.isRegistered)
+                                card_action = swipe_aware_action(card_action)
                                 plugs.call_ignore_errors(card_action['package'], card_action['plugin'], card_action['method'],
                                                          args=card_action['args'], kwargs=card_action['kwargs'])
 
@@ -232,8 +244,6 @@ class ReaderRunner(threading.Thread):
                             rfid_card_detect_callbacks.run_callbacks(card_id, RfidCardDetectState.isUnkown)
                             self._logger.info(f"Unknown card: '{card_id}'")
                             self.publisher.send(self.topic, card_id)
-                    elif self._cfg_log_ignored_cards is True:
-                        self._logger.debug(f"'Ignoring card id {card_id} due to same-card-delay ({self._cfg_same_id_delay}s)")
                     previous_time = time.time()
                 else:
                     # Time-out for reader internal error resulting in empty string: to be ignored
