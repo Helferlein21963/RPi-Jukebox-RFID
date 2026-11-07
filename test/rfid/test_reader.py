@@ -33,45 +33,71 @@ class Clock:
 
 class FakeCancel:
     """Replaces the cancel event of the reader thread, so the read loop does not wait in real time"""
+    def __init__(self):
+        self._is_set = False
+        self.waits = []
+
     def is_set(self):
-        return False
+        return self._is_set
 
     def wait(self, timeout=None):
-        return False
+        self.waits.append(timeout)
+        return self._is_set
 
     def set(self):
-        pass
+        self._is_set = True
 
 
-def run_reads(monkeypatch, reads):
-    """
-    Feed card reads through ReaderRunner.run() and return the triggered calls
-
-    :param reads: list of (seconds since previous read, card id)
-    """
-    clock = Clock()
-    calls = []
-
+def fake_reader_class(sessions, clock, calls, cancel):
+    """Reader class whose instances play the given sessions, one per opening (see :func:`run_reads`)"""
     class FakeReader:
         def __init__(self, reader_cfg_key):
-            pass
+            calls.append(('open', reader_cfg_key))
+            session = sessions.pop(0)
+            if isinstance(session, Exception):
+                raise session
+            self.reads, self.error = session
 
         def __enter__(self):
             return self
 
         def __exit__(self, *args):
+            calls.append(('close',))
             return False
 
         def __iter__(self):
-            for pause, card_id in reads:
+            for pause, card_id in self.reads:
                 clock.sleep(pause)
                 yield card_id
+            if self.error is not None:
+                raise self.error
+            if not sessions:
+                cancel.set()
 
         def stop(self):
             pass
 
+    return FakeReader
+
+
+def run_reads(monkeypatch, reads, sessions=None):
+    """
+    Feed card reads through ReaderRunner.run() and return the triggered calls
+
+    :param reads: list of (seconds since previous read, card id)
+    :param sessions: Instead of reads: one entry per opening of the reader. An entry is either an exception
+        raised when opening the reader, or (reads, exception raised after these reads or None).
+        After the last entry, the reader is stopped (like on shutdown)
+    :return: calls, the reader runner
+    """
+    clock = Clock()
+    calls = []
+    if sessions is None:
+        sessions = [(reads, None)]
+    cancel = FakeCancel()
+
     module = types.ModuleType(f'components.rfid.hardware.{FAKE_MODULE}.{FAKE_MODULE}')
-    module.ReaderClass = FakeReader
+    module.ReaderClass = fake_reader_class(list(sessions), clock, calls, cancel)
     monkeypatch.setitem(sys.modules, f'components.rfid.hardware.{FAKE_MODULE}', types.ModuleType(FAKE_MODULE))
     monkeypatch.setitem(sys.modules, f'components.rfid.hardware.{FAKE_MODULE}.{FAKE_MODULE}', module)
 
@@ -100,13 +126,45 @@ def run_reads(monkeypatch, reads):
     })
 
     runner = reader.ReaderRunner('read_test')
-    runner._cancel = FakeCancel()
+    runner._cancel = cancel
     runner.run()
-    return [c for c in calls if c[0] != 'publish']
+    if reads is None:
+        return [c for c in calls if c[0] != 'publish'], runner
+    return [c for c in calls if c[0] not in ('publish', 'open', 'close')]
 
 
 def player_calls(calls):
     return [c[0] for c in calls]
+
+
+def test_reader_missing_at_start_is_opened_again(monkeypatch):
+    # E.g. USB reader not (yet) connected: cards must work as soon as it is there, without restarting the Jukebox
+    not_found = FileNotFoundError("Could not find the device")
+    calls, runner = run_reads(monkeypatch, None, sessions=[not_found, not_found, ([(0, 'music')], None)])
+    assert player_calls(calls) == ['open', 'open', 'open', 'player.ctrl.play_card', 'close']
+    assert runner._cancel.waits[:2] == [2.0, 4.0]
+
+
+def test_reader_error_while_reading_reopens_reader(monkeypatch):
+    # E.g. USB reader unplugged and plugged in again: reading raises OSError (No such device)
+    calls, runner = run_reads(monkeypatch, None, sessions=[([(0, 'music')], OSError(19, 'No such device')),
+                                                           ([(5, 'next')], None)])
+    assert player_calls(calls) == ['open', 'player.ctrl.play_card', 'close',
+                                   'open', 'player.ctrl.next', 'close']
+
+
+def test_retry_delay_is_limited(monkeypatch):
+    sessions = [FileNotFoundError("Could not find the device")] * 6 + [([], None)]
+    calls, runner = run_reads(monkeypatch, None, sessions=sessions)
+    assert runner._cancel.waits == [2.0, 4.0, 8.0, 16.0, 30.0, 30.0]
+
+
+def test_stop_ends_listening_without_reopening(monkeypatch):
+    calls, runner = run_reads(monkeypatch, None, sessions=[([(0, 'music')], None)])
+    assert player_calls(calls) == ['open', 'player.ctrl.play_card', 'close']
+    assert runner._reader is None
+    # Stopping a runner without an open reader must not fail (e.g. shutdown while waiting to retry)
+    runner.stop()
 
 
 def test_play_folder_card_is_routed_through_play_card(monkeypatch):

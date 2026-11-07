@@ -146,14 +146,51 @@ class ReaderRunner(threading.Thread):
 
     def stop(self):
         self._cancel.set()
-        self._reader.stop()
+        reader = self._reader
+        if reader is not None:
+            reader.stop()
 
-    def run(self):  # noqa: C901
+    def run(self):
+        """
+        Open the reader and listen for cards until :func:`stop` is called
+
+        If the reader cannot be opened (e.g. not connected at start-up) or fails while reading (e.g. USB error),
+        it is closed and opened again after a wait time (see :data:`RETRY_DELAY_RANGE`). Otherwise, cards would not
+        work any more until the next restart of the Jukebox.
+        """
         self._logger.debug("Start listening!")
-        # Init the reader class
-        # Do it here, such that the reader class is initialized and destroyed in the
-        # actual reader thread
-        self._reader = self._reader_module.ReaderClass(self._reader_cfg_key)
+        retry_delay = RETRY_DELAY_RANGE[0]
+        has_failed = False
+        while not self._cancel.is_set():
+            try:
+                # Init the reader class
+                # Do it here, such that the reader class is initialized and destroyed in the
+                # actual reader thread
+                self._reader = self._reader_module.ReaderClass(self._reader_cfg_key)
+                if self._cancel.is_set():
+                    # stop() was called while the reader was being opened
+                    self._reader.stop()
+                if has_failed:
+                    self._logger.info("Reader is working again")
+                    has_failed = False
+                    retry_delay = RETRY_DELAY_RANGE[0]
+                self._listen()
+                if self._cancel.is_set():
+                    break
+                raise RuntimeError("Reader stopped unexpectedly")
+            except Exception as e:
+                # Report the first failure as error, repeated failures (e.g. reader stays unplugged) only as debug
+                log_fn = self._logger.debug if has_failed else self._logger.error
+                log_fn(f"Reader failed: {e.__class__.__name__}: {e}. Trying again in {retry_delay:.0f} s")
+                has_failed = True
+            finally:
+                self._reader = None
+            self._cancel.wait(timeout=retry_delay)
+            retry_delay = min(2 * retry_delay, RETRY_DELAY_RANGE[1])
+        self._logger.debug("Stop listening!")
+
+    def _listen(self):  # noqa: C901
+        """Read cards from the opened reader and trigger their actions, until the reader stops"""
         self.publisher = publishing.get_publisher()
         # Previous ID is only stored to prevent repetitive triggers of the same card in case of place-not-swipe scenarios
         # For command card there is an exception (see below)
@@ -253,8 +290,9 @@ class ReaderRunner(threading.Thread):
                 if self._timer_thread is not None:
                     self._timer_thread.trigger.clear()
 
-        self._logger.debug("Stop listening!")
 
+#: Wait time [s] before opening a failed reader again: starts at the first value, doubles up to the second
+RETRY_DELAY_RANGE = (2.0, 30.0)
 
 #: Allowed range [s] for :func:`set_same_id_delay`
 SAME_ID_DELAY_RANGE = (0.0, 10.0)
