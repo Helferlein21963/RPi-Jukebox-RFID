@@ -44,7 +44,22 @@ const matchesFilter = (cardId, card, description, filter) => {
   );
 };
 
-const CardsList = ({ cardsList, filter = '' }) => {
+const compareText = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+// 'name': named cards alphabetically, then cards without a name by ID; 'id': all cards by ID
+const sortCardIds = (cardIds, cardsList, sortOrder) => (
+  [...cardIds].sort((a, b) => {
+    if (sortOrder === 'name') {
+      const nameA = cardsList[a].name;
+      const nameB = cardsList[b].name;
+      if (nameA && nameB) return compareText(nameA, nameB) || compareText(a, b);
+      if (nameA || nameB) return nameA ? -1 : 1;
+    }
+    return compareText(a, b);
+  })
+);
+
+const CardsList = ({ cardsList, filter = '', sortOrder = 'name' }) => {
   const { t } = useTranslation();
   const libraryPath = useMusicLibraryPath();
 
@@ -100,12 +115,16 @@ const CardsList = ({ cardsList, filter = '' }) => {
     return <Typography>{t('cards.list.no-cards-registered')}</Typography>;
   }
 
-  const cardIds = Object.keys(cardsList).filter(cardId => matchesFilter(
-    cardId,
-    cardsList[cardId],
-    describeCard(cardsList[cardId], libraryPath),
-    filter,
-  ));
+  const cardIds = sortCardIds(
+    Object.keys(cardsList).filter(cardId => matchesFilter(
+      cardId,
+      cardsList[cardId],
+      describeCard(cardsList[cardId], libraryPath),
+      filter,
+    )),
+    cardsList,
+    sortOrder,
+  );
 
   return (
     cardIds.length > 0

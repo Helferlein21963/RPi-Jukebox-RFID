@@ -122,7 +122,12 @@
       "register-card": "Register a card",
       "search-label": "Search cards",
       "search-placeholder": "Search by name, ID or folder",
-      "search-clear": "Clear search"
+      "search-clear": "Clear search",
+      "sort-label": "Sort order",
+      "sort-name": "A–Z",
+      "sort-id": "ID",
+      "sort-by-name": "Sort alphabetically by name",
+      "sort-by-id": "Sort by card ID"
     },
     "register": {
       "register-card": "Register a card"

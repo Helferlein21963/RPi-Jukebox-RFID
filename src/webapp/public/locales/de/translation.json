@@ -122,7 +122,12 @@
       "register-card": "Registriere eine Karte",
       "search-label": "Karten durchsuchen",
       "search-placeholder": "Nach Name, ID oder Ordner suchen",
-      "search-clear": "Suche löschen"
+      "search-clear": "Suche löschen",
+      "sort-label": "Sortierung",
+      "sort-name": "A–Z",
+      "sort-id": "ID",
+      "sort-by-name": "Alphabetisch nach Name sortieren",
+      "sort-by-id": "Nach Karten-ID sortieren"
     },
     "register": {
       "register-card": "Registriere eine Karte"
