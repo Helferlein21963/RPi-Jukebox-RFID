@@ -18,6 +18,7 @@
 * File Management
     * [Network share / Samba](./samba.md)
     * [YouTube and podcast import (Web App)](./webapp/youtube-import.md)
+    * [Rename folders and songs (Web App)](./webapp/rename.md)
 
 ## Hardware Components
 

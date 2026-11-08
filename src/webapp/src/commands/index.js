@@ -45,6 +45,16 @@ const commands = {
     plugin: 'ctrl',
     method: 'get_folder_content',
   },
+  getRenameInfo: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'get_rename_info',
+  },
+  renameLibraryEntry: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'rename',
+  },
   cardsList: {
     _package: 'cards',
     plugin: 'list_cards',

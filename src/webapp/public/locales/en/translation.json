@@ -238,6 +238,23 @@
       "no-music": "No music found!",
       "empty-library": "Your library is still empty!",
       "show-more": "Show more ({{count}} remaining)"
+    },
+    "rename": {
+      "title-folder": "Rename folder",
+      "title-song": "Rename song",
+      "folder-name": "Folder name",
+      "file-name": "File name",
+      "song-title": "Title (shown in albums and songs)",
+      "title-not-supported": "Changing the title needs mutagen (Import → install yt-dlp).",
+      "cleaned-name": "Will be saved as: {{name}}",
+      "cards_one": "{{count}} card plays this and will be adapted.",
+      "cards_other": "{{count}} cards play this and will be adapted.",
+      "errors": {
+        "exists": "This name is already taken in the folder.",
+        "playing": "This is being played. Please stop the playback first.",
+        "invalid-name": "Please enter a valid name.",
+        "unknown": "Renaming failed."
+      }
     }
   },
   "navigation": {

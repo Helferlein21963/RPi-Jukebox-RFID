@@ -20,6 +20,7 @@ import time
 from typing import (List, Dict, Optional)
 import jukebox.utils as utils
 import jukebox.cfghandler
+import jukebox.library_edit as library_edit
 import jukebox.plugs as plugs
 import jukebox.publishing as publishing
 from components.rfid.cardutils import decode_card_command
@@ -138,6 +139,64 @@ def register_card(card_id: str, cmd_alias: str,
         if auto_save:
             cfg_cards.save()
     publishing.get_publisher().send(f'{plugs.loaded_as(__name__)}.database.has_changed', time.ctime())
+
+
+#: Player methods whose first argument (or keyword argument) is a folder or song of the music library
+_PATH_ARGUMENTS = {'play_folder': 'folder', 'play_card': 'folder', 'play_single': 'song_url'}
+
+
+def _path_argument(card_action):
+    """Name of the path argument of the card's player call, None if it has none"""
+    alias = card_action.get('alias')
+    if alias is not None:
+        definition = cmd_alias_definitions.get(alias, {})
+        package, method = definition.get('package'), definition.get('method')
+    else:
+        package, method = card_action.get('package'), card_action.get('method')
+    return _PATH_ARGUMENTS.get(method) if package == 'player' else None
+
+
+@plugs.register
+def rewrite_paths(old: str, new: str, library: str, dry_run: bool = False) -> int:
+    """Adapt the cards after a folder or song of the music library was renamed
+
+    Cards playing *old* or something inside it (folder, song) then play the renamed path.
+    Paths stay absolute or relative to the library, like they were stored.
+
+    :param old: Absolute path before renaming
+    :param new: Absolute path after renaming
+    :param library: Absolute path of the music library
+    :param dry_run: Only count the affected cards
+    :return: Number of affected cards
+    """
+    changed = 0
+    with cfg_cards:
+        for card_id, card_action in cfg_cards.items():
+            key = _path_argument(card_action) if isinstance(card_action, dict) else None
+            if key is None:
+                continue
+            args = card_action.get('args')
+            kwargs = card_action.get('kwargs')
+            new_args = new_kwarg = None
+            if isinstance(args, list) and args:
+                new_args = library_edit.rewrite_path(args[0], old, new, library)
+            if isinstance(kwargs, dict):
+                new_kwarg = library_edit.rewrite_path(kwargs.get(key), old, new, library)
+            if new_args is None and new_kwarg is None:
+                continue
+            changed += 1
+            if dry_run:
+                continue
+            if new_args is not None:
+                card_action['args'] = [new_args, *args[1:]]
+            if new_kwarg is not None:
+                card_action['kwargs'] = {**kwargs, key: new_kwarg}
+            log.info(f"Card '{card_id}': '{old}' renamed to '{new}'")
+        if changed and not dry_run:
+            cfg_cards.save()
+    if changed and not dry_run:
+        publishing.get_publisher().send(f'{plugs.loaded_as(__name__)}.database.has_changed', time.ctime())
+    return changed
 
 
 @plugs.register

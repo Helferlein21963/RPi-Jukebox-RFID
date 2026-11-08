@@ -238,6 +238,23 @@
       "no-music": "Keine Musik gefunden!",
       "empty-library": "Deine Bibliothek ist noch leer!",
       "show-more": "Weitere anzeigen (noch {{count}})"
+    },
+    "rename": {
+      "title-folder": "Ordner umbenennen",
+      "title-song": "Titel umbenennen",
+      "folder-name": "Ordnername",
+      "file-name": "Dateiname",
+      "song-title": "Titel (wird in Alben und Titel angezeigt)",
+      "title-not-supported": "Zum Ändern des Titels wird mutagen benötigt (Import → yt-dlp installieren).",
+      "cleaned-name": "Wird gespeichert als: {{name}}",
+      "cards_one": "{{count}} Karte spielt das und wird angepasst.",
+      "cards_other": "{{count}} Karten spielen das und werden angepasst.",
+      "errors": {
+        "exists": "Dieser Name ist in dem Ordner schon vergeben.",
+        "playing": "Wird gerade abgespielt. Bitte zuerst die Wiedergabe stoppen.",
+        "invalid-name": "Bitte einen gültigen Namen eingeben.",
+        "unknown": "Umbenennen fehlgeschlagen."
+      }
     }
   },
   "navigation": {

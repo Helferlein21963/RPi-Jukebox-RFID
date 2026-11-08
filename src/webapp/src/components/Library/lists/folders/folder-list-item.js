@@ -8,6 +8,7 @@ import {
   ListItemText,
 } from '@mui/material';
 
+import EditIcon from '@mui/icons-material/Edit';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 
 import request from '../../../../utils/request';
@@ -24,6 +25,7 @@ const FolderListItem = ({
   isPlaying,
   isSelecting,
   registerMusicToCard,
+  onRename,
 }) => {
   const { t } = useTranslation();
   const { type, name, path } = folder;
@@ -71,7 +73,15 @@ const FolderListItem = ({
             >
               <NavigateNextIcon />
             </IconButton>
-          : undefined
+          : type === 'file' && !isSelecting && onRename
+            ? <IconButton
+                edge="end"
+                onClick={() => onRename(path)}
+                aria-label={t('library.rename.title-song')}
+              >
+                <EditIcon />
+              </IconButton>
+            : undefined
       }
     >
       <ListItemButton selected={isCurrent} {...buttonProps}>

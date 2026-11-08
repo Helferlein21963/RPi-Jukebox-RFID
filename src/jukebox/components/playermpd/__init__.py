@@ -96,6 +96,7 @@ import jukebox.plugs as plugs
 import jukebox.multitimer as multitimer
 import jukebox.publishing as publishing
 import jukebox.playlistgenerator as playlistgenerator
+import jukebox.library_edit as library_edit
 import misc
 
 from jukebox.NvManager import nv_manager
@@ -852,6 +853,104 @@ class PlayerMPD:
         plc = playlistgenerator.PlaylistCollector(components.player.get_music_library_path())
         plc.get_directory_content(folder)
         return plc.playlist
+
+    @plugs.tag
+    def get_rename_info(self, path: str) -> dict:
+        """
+        Information for renaming a folder or song of the music library (see :meth:`rename`)
+
+        :param path: Absolute path, or relative to the music library
+        :return: ``{'type': 'directory' | 'file', 'name': name (files: without extension), 'extension': '.mp3',
+            'title': title tag (files), 'title_supported': bool, 'cards': number of cards playing it}``
+        :raises ValueError: if the path is outside of the music library
+        """
+        library = self.get_music_library_path()
+        target = library_edit.resolve_in_library(library, path)
+        is_dir = os.path.isdir(target)
+        name, extension = (os.path.basename(target), '') if is_dir else os.path.splitext(os.path.basename(target))
+        info = {
+            'type': 'directory' if is_dir else 'file',
+            'name': name,
+            'extension': extension,
+            'title': '',
+            'title_supported': False,
+            'cards': plugs.call('cards', 'rewrite_paths', args=[target, target, library], kwargs={'dry_run': True}),
+        }
+        if not is_dir:
+            info['title_supported'] = library_edit.title_supported()
+            songs = self.get_song_by_url(os.path.relpath(target, library)) or []
+            info['title'] = songs[0].get('title', '') if songs else ''
+        return info
+
+    @plugs.tag
+    def rename(self, path: str, new_name: str, title: Optional[str] = None) -> str:
+        """
+        Rename a folder or song of the music library
+
+        Cards and remembered positions of the renamed folder (or song) are adapted, the MPD database is updated
+        in the background.
+
+        :param path: Absolute path, or relative to the music library
+        :param new_name: New name; files keep their extension
+        :param title: New title tag (files only), None to keep it
+        :return: The new absolute path
+        :raises ValueError: if the name is invalid, the path outside of the library, or it is being played
+        :raises FileExistsError: if the new name already exists
+        """
+        library = self.get_music_library_path()
+        old = library_edit.resolve_in_library(library, path)
+
+        def moved(value):
+            return library_edit.rewrite_path(value, old, new, library)
+
+        # Check the name before changing anything
+        new = library_edit.new_path(old, new_name)
+        with self.mpd_lock:
+            new_title = None
+            if title is not None and os.path.isfile(old):
+                songs = self.mpd_retry_with_mutex(self.mpd_client.find, 'file', os.path.relpath(old, library)) or []
+                if title.strip() != (songs[0].get('title', '') if songs else ''):
+                    new_title = title.strip()
+            if new == old and new_title is None:
+                return old
+
+            # Songs in the queue have the old path (MPD could not play them any longer), or are being rewritten
+            queued = [song for song in self.mpd_client.playlistinfo()
+                      if library_edit.rewrite_path(song.get('file'), old, old, library) is not None]
+            if queued:
+                if self.mpd_client.status().get('state') in ('play', 'pause'):
+                    raise ValueError(f"'{os.path.basename(old)}' is being played. Stop the playback first.")
+                self.mpd_client.clear()
+
+            if new_title is not None:
+                library_edit.set_title(old, new_title)
+                logger.info(f"Title of '{old}' set to '{new_title}'")
+            new = library_edit.rename_entry(old, new_name)
+            if new != old:
+                logger.info(f"Renamed '{old}' to '{new}'")
+                self._rename_in_status(moved)
+
+        if new != old:
+            plugs.call_ignore_errors('cards', 'rewrite_paths', args=[old, new, library])
+        self.update()
+        return new
+
+    def _rename_in_status(self, moved) -> None:
+        """Adapt the remembered folders and positions after renaming (call with mpd_lock)"""
+        player_status = self.music_player_status['player_status']
+        folders = self.music_player_status['audio_folder_status']
+        for status in [player_status, *folders.values()]:
+            filename = moved(status.get('CURRENTFILENAME'))
+            if filename is not None:
+                status['CURRENTFILENAME'] = filename
+        for folder in list(folders.keys()):
+            renamed = moved(folder)
+            if renamed is not None:
+                folders[renamed] = folders.pop(folder)
+        last_played = moved(player_status.get('last_played_folder'))
+        if last_played is not None:
+            player_status['last_played_folder'] = last_played
+        self.music_player_status.save_to_json()
 
     @plugs.tag
     def play_folder(self, folder: str, recursive: bool = False, resume: bool = False,

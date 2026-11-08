@@ -1,15 +1,20 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import { dropLast } from "ramda";
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import {
   Grid,
+  IconButton,
   List,
   Typography,
 } from '@mui/material';
 
+import EditIcon from '@mui/icons-material/Edit';
+
 import FolderListItem from './folder-list-item';
 import FolderListItemBack from './folder-list-item-back';
+import RenameDialog from '../../dialogs/rename';
 import {
   isFolderPlaying,
   isSongPlaying,
@@ -27,9 +32,14 @@ const FolderList = ({
   libraryPath,
   isSelecting,
   registerMusicToCard,
+  onChanged,
 }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { search: urlSearch } = useLocation();
   const nowPlaying = useNowPlaying();
+  // Path of the folder or song being renamed
+  const [renamePath, setRenamePath] = useState(undefined);
   const decodedDir = decodeURIComponent(dir);
   // The backend returns absolute paths, so the library root has two names: './' and its absolute path
   // TODO: ROOT_DIRS should be removed after paths are relative
@@ -45,6 +55,17 @@ const FolderList = ({
   const parentDir = getParentDir();
 
   const playFolder = () => request('play_folder', { folder: decodedDir, recursive: true });
+
+  // The folder shown was renamed: show it under its new name. Otherwise: reload its content
+  const onRenamed = (newPath) => {
+    const wasShownFolder = renamePath === decodedDir;
+    setRenamePath(undefined);
+    if (wasShownFolder) {
+      navigate(`/library/folders/${encodeURIComponent(newPath)}${urlSearch}`, { replace: true });
+    } else {
+      onChanged();
+    }
+  };
 
   // Is the song that is playing in this folder / in this entry (a subfolder or the song itself)?
   const isFolderCurrent = isFolderPlaying(nowPlaying, toLibraryPath(decodedDir, libraryPath));
@@ -64,6 +85,12 @@ const FolderList = ({
           >
             {decodedDir.split('/').pop()}
           </Typography>
+          <IconButton
+            onClick={() => setRenamePath(decodedDir)}
+            aria-label={t('library.rename.title-folder')}
+          >
+            <EditIcon />
+          </IconButton>
           <PlayButton
             isCurrent={isFolderCurrent}
             isPlaying={isFolderCurrent && nowPlaying.isPlaying}
@@ -91,10 +118,19 @@ const FolderList = ({
               isPlaying={isCurrent && nowPlaying.isPlaying}
               isSelecting={isSelecting}
               registerMusicToCard={registerMusicToCard}
+              onRename={setRenamePath}
             />
           );
         })}
       </List>
+      {renamePath &&
+        <RenameDialog
+          open
+          path={renamePath}
+          onClose={() => setRenamePath(undefined)}
+          onRenamed={onRenamed}
+        />
+      }
     </>
   );
 }

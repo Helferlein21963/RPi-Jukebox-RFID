@@ -21,6 +21,8 @@ const Folders = ({
   const [folders, setFolders] = useState([]);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Increased to load the folder again (e.g. after renaming a song)
+  const [reloadCount, setReloadCount] = useState(0);
   // Folder paths are absolute: needed to recognize the library root
   const libraryPath = useMusicLibraryPath();
 
@@ -46,7 +48,7 @@ const Folders = ({
     }
 
     fetchFolderList();
-  }, [dir]);
+  }, [dir, reloadCount]);
 
   const filteredFolders = folders.filter(search);
 
@@ -64,6 +66,7 @@ const Folders = ({
       libraryPath={libraryPath}
       isSelecting={isSelecting}
       registerMusicToCard={registerMusicToCard}
+      onChanged={() => setReloadCount((count) => count + 1)}
     />
   );
 };

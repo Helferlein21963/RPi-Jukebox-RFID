@@ -51,3 +51,42 @@ def test_register_card_with_empty_name_removes_name(cfg_cards):
 def test_register_card_stores_kwargs(cfg_cards):
     cards.register_card('vol', 'change_volume', kwargs={'step': 5}, auto_save=False)
     assert cfg_cards['vol'] == {'alias': 'change_volume', 'kwargs': {'step': 5}}
+
+
+@pytest.fixture
+def path_cards(cfg_cards):
+    cfg_cards.config_dict({
+        'folder': {'alias': 'play_folder', 'args': ['/music/Conni', True], 'name': 'Conni'},
+        'inside': {'alias': 'play_card', 'kwargs': {'folder': '/music/Conni/CD 1', 'recursive': False}},
+        'song': {'alias': 'play_single', 'args': ['Conni/01.mp3']},
+        'raw': {'package': 'player', 'plugin': 'ctrl', 'method': 'play_folder', 'args': ['Conni']},
+        'similar': {'alias': 'play_folder', 'args': ['/music/ConniPlus']},
+        'album': {'alias': 'play_album', 'args': ['Conni', 'Conni']},
+        'volume': {'alias': 'change_volume', 'args': ['/music/Conni']},
+    })
+    return cfg_cards
+
+
+@pytest.mark.skipif(sys.platform.startswith('win'), reason='POSIX paths')
+def test_rewrite_paths_adapts_cards_playing_the_renamed_path(path_cards, monkeypatch):
+    saved = []
+    monkeypatch.setattr(path_cards, 'save', lambda *args, **kwargs: saved.append(True))
+
+    assert cards.rewrite_paths('/music/Conni', '/music/Conni 1', '/music') == 4
+
+    assert path_cards['folder'] == {'alias': 'play_folder', 'args': ['/music/Conni 1', True], 'name': 'Conni'}
+    assert path_cards['inside']['kwargs'] == {'folder': '/music/Conni 1/CD 1', 'recursive': False}
+    assert path_cards['song']['args'] == ['Conni 1/01.mp3']
+    assert path_cards['raw']['args'] == ['Conni 1']
+    assert path_cards['similar']['args'] == ['/music/ConniPlus']
+    assert path_cards['album']['args'] == ['Conni', 'Conni']
+    assert path_cards['volume']['args'] == ['/music/Conni']
+    assert saved == [True]
+
+
+@pytest.mark.skipif(sys.platform.startswith('win'), reason='POSIX paths')
+def test_rewrite_paths_dry_run_only_counts(path_cards, monkeypatch):
+    monkeypatch.setattr(path_cards, 'save', lambda *args, **kwargs: pytest.fail('saved'))
+
+    assert cards.rewrite_paths('/music/Conni', '/music/Conni', '/music', dry_run=True) == 4
+    assert path_cards['folder']['args'] == ['/music/Conni', True]
