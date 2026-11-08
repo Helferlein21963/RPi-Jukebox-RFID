@@ -7,6 +7,7 @@ import {
   CardContent,
   CardHeader,
   Grid,
+  TextField,
   Typography
 } from '@mui/material';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
@@ -30,6 +31,8 @@ const CardsForm = ({
   cardId,
   actionData,
   setActionData,
+  cardName,
+  setCardName,
 }) => {
   const { t } = useTranslation();
 
@@ -46,14 +49,41 @@ const CardsForm = ({
                 </Avatar>
               }
               title={
-                cardId
-                  ? cardId
-                  : t('cards.form.no-card-id')
+                cardName
+                  ? cardName
+                  : (cardId || t('cards.form.no-card-id'))
               }
+              subheader={cardName && cardId ? t('cards.form.card-id', { cardId }) : undefined}
             />
             <CardContent>
               {cardId &&
                 <>
+                  <Grid
+                    container
+                    direction="row"
+                    alignItems="center"
+                    sx={{ marginBottom: '20px' }}
+                  >
+                    <Grid item xs={5}>
+                      <Typography>
+                        {t('cards.form.card-name')}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={7}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        variant="standard"
+                        value={cardName || ''}
+                        onChange={(event) => setCardName(event.target.value)}
+                        placeholder={t('cards.form.card-name-placeholder')}
+                        inputProps={{
+                          'aria-label': t('cards.form.card-name'),
+                          maxLength: 60,
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
                   <Grid container direction="row" alignItems="center">
                     <ControlsSelector
                       actionData={actionData}
@@ -64,6 +94,7 @@ const CardsForm = ({
                   <ActionsControls
                     actionData={actionData}
                     cardId={cardId}
+                    cardName={cardName}
                   />
                 </>
               }

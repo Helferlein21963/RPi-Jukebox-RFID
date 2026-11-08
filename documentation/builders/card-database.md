@@ -45,6 +45,19 @@ not always work.
 In addition to the RPC commands, these options may be specified for
 every card
 
+### name: string (optional)
+
+A human-readable name for the card, e.g. the figure the card is attached
+to. It has no effect on the card action; the web app shows it next to the
+card ID in the card list and lets you edit it when registering or editing a card.
+
+``` yaml
+'0008':
+    name: Lion figure
+    alias: play_card
+    args: [path/to/folder]
+```
+
 ### ignore_card_removal_action: true \| false (default: false)
 
 Only applies when using a place-capable reader and *place_not_swipe* is *true*. This option is ignored otherwise, so it does not hurt.

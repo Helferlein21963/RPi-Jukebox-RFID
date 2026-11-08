@@ -107,7 +107,10 @@
     },
     "form": {
       "no-card-swiped": "Bitte scanne eine Karte um einen ID zu erhalten. Diese wird dann zur Registrierung einer neuen Aktion verwendet.",
-      "no-card-id": "Keine Karten-ID vorhanden"
+      "no-card-id": "Keine Karten-ID vorhanden",
+      "card-id": "Karten-ID: {{cardId}}",
+      "card-name": "Kartenname",
+      "card-name-placeholder": "z.B. Figur Löwe"
     },
     "list": {
       "no-cards-registered": "Es wurden noch keine Karten registriert!"

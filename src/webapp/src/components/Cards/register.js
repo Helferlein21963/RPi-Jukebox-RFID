@@ -17,6 +17,8 @@ const CardsRegister = () => {
 
   const [cardId, setCardId] = useState(undefined);
   const [actionData, setActionData] = useState(registerCard?.actionData || {});
+  // undefined: keep the name of an already registered card when saving
+  const [cardName, setCardName] = useState(undefined);
 
   useEffect(() => {
     setState(state => (omit(['rfid.card_id'], state)));
@@ -32,6 +34,8 @@ const CardsRegister = () => {
       cardId={cardId}
       actionData={actionData}
       setActionData={setActionData}
+      cardName={cardName}
+      setCardName={setCardName}
     />
   );
 };

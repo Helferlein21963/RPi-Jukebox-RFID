@@ -17,6 +17,7 @@ import {
 const ActionsControls = ({
   actionData,
   cardId,
+  cardName,
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -32,6 +33,8 @@ const ActionsControls = ({
       cmd_alias,
       overwrite: true,
       ...(args.length && { args }),
+      // An empty name removes it; no name given keeps the stored one
+      ...(typeof cardName === 'string' && { name: cardName.trim() }),
     };
 
     const { error } = await request('registerCard', kwargs);
@@ -83,7 +86,7 @@ const ActionsControls = ({
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
         doDelete={handleDeleteCard}
-        cardId={cardId}
+        cardId={cardName ? `${cardName} (${cardId})` : cardId}
       />
     </>
   );

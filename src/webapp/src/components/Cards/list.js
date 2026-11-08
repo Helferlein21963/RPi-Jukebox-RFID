@@ -39,7 +39,7 @@ const CardsList = ({ cardsList }) => {
       return <Link ref={ref} to={location} {...props} />
     });
 
-    const { from_alias, action, func } = cardsList[cardId];
+    const { from_alias, action, func, name } = cardsList[cardId];
     const description = from_alias
       ? reject(
           isNil,
@@ -60,7 +60,21 @@ const CardsList = ({ cardsList }) => {
           </Avatar>
         </ListItemAvatar>
         <ListItemText
-          primary={cardId}
+          primary={
+            name
+              ? <>
+                  {name}
+                  <Typography
+                    component="span"
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ marginLeft: '8px' }}
+                  >
+                    {cardId}
+                  </Typography>
+                </>
+              : cardId
+          }
           secondary={description}
         />
       </ListItem>

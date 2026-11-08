@@ -37,7 +37,8 @@ def list_cards():
 
     This is intended as basis for a formatter function
 
-    Format: 'id': {decoded_function_call, ignore_same_id_delay, ignore_card_removal_action, description, from_alias}"""
+    Format: 'id': {decoded_function_call, ignore_same_id_delay, ignore_card_removal_action, description, from_alias,
+    name}"""
     card_list = {}
     with cfg_cards:
         for card_id, card_action in cfg_cards.items():
@@ -64,6 +65,9 @@ def list_cards():
             alias = card_action.get('alias', None)
             if alias is not None:
                 card_list[card_id]['from_alias'] = alias
+            name = card_action.get('name', None)
+            if name:
+                card_list[card_id]['name'] = name
     return card_list
 
 
@@ -92,10 +96,14 @@ def register_card(card_id: str, cmd_alias: str,
                   args: Optional[List] = None, kwargs: Optional[Dict] = None,
                   ignore_card_removal_action: Optional[bool] = None, ignore_same_id_delay: Optional[bool] = None,
                   overwrite: bool = False,
-                  auto_save: bool = True):
+                  auto_save: bool = True,
+                  name: Optional[str] = None):
     """Register a new card based on quick-selection
 
     If you are going to call this through the RPC it will get a little verbose
+
+    *name* is an optional, human-readable card name (e.g. the figure the card is attached to).
+    If it is *None*, the name of an already registered card is kept; an empty string removes it.
 
     **Example:** Registering a new card with ID *0009* for increment volume with a custom argument to inc_volume
     (*here: 15*) and custom *ignore_same_id_delay value*::
@@ -114,11 +122,15 @@ def register_card(card_id: str, cmd_alias: str,
             msg = f"Card already registered: '{card_id}'. Abort. (use overwrite=True to overrule)"
             log.error(msg)
             raise KeyError(msg)
+        if name is None:
+            name = (cfg_cards.get(card_id, default=None) or {}).get('name', None)
         cfg_cards[card_id] = {'alias': cmd_alias}
+        if name:
+            cfg_cards[card_id]['name'] = str(name).strip()
         if args is not None:
             cfg_cards[card_id]['args'] = args
         if kwargs is not None:
-            cfg_cards[card_id]['kwargs'] = args
+            cfg_cards[card_id]['kwargs'] = kwargs
         if ignore_same_id_delay is not None:
             cfg_cards[card_id]['ignore_same_id_delay'] = ignore_same_id_delay
         if ignore_card_removal_action is not None:

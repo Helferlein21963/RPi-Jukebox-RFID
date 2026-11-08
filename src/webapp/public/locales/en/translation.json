@@ -107,7 +107,10 @@
     },
     "form": {
       "no-card-swiped": "Please swipe a card to receive an ID which will be used to register a new action.",
-      "no-card-id": "No card ID"
+      "no-card-id": "No card ID",
+      "card-id": "Card ID: {{cardId}}",
+      "card-name": "Card name",
+      "card-name-placeholder": "e.g. lion figure"
     },
     "list": {
       "no-cards-registered": "No cards registered!"
