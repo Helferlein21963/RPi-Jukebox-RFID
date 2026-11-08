@@ -170,7 +170,7 @@
       "folder-existing-reorder_one": "Bestehender Ordner mit {{count}} Titel – Reihenfolge unten festlegen",
       "folder-existing-reorder_other": "Bestehender Ordner mit {{count}} Titeln – Reihenfolge unten festlegen",
       "reorder": "Reihenfolge selbst festlegen",
-      "reorder-hint": "Alle Dateien des Ordners werden in dieser Reihenfolge neu benannt (01 - …, 02 - …). Der Ordner beginnt danach wieder beim ersten Titel.",
+      "reorder-hint": "Alle Dateien des Ordners werden in dieser Reihenfolge neu benannt (01 - …, 02 - …). Die gemerkte Position bleibt erhalten, auch wenn der Ordner gerade läuft.",
       "tracks-reorder": "Reihenfolge im Ordner · {{existing}} vorhanden, {{selected}} von {{total}} neuen ausgewählt",
       "existing": "Schon im Ordner",
       "new": "Neu",

@@ -1174,6 +1174,98 @@ class PlayerMPD:
         self.music_player_status.save_to_json()
 
     @plugs.tag
+    def files_renamed(self, folder: str, renames: list) -> None:
+        """
+        Follow files of a folder renamed (or added) by another component, e.g. the YouTube import, also while
+        the folder is being played
+
+        Remembered positions and cards are adapted at once, the MPD database update is started. If songs of the
+        folder are in the queue, the current song plays on until MPD knows the new names; then the queue is loaded
+        again with the new names (and the new files, if it held this folder only) and continues at the same song
+        and position. A paused playback stays stopped at that position (play / toggle continues there).
+
+        :param folder: Absolute path of the folder, or relative to the music library
+        :param renames: ``[(old, new)]`` absolute paths of the renamed files (may be empty)
+        """
+        library = self.get_music_library_path()
+        target = os.path.abspath(os.path.join(library, folder))
+        renames = [(os.path.abspath(old), os.path.abspath(new)) for old, new in renames if old != new]
+
+        def in_folder(value):
+            return library_edit.rewrite_path(value, target, target, library) is not None
+
+        with self.mpd_lock:
+            update_id = self.mpd_client.update()
+            queued = any(in_folder(song.get('file')) for song in self.mpd_client.playlistinfo())
+            if renames:
+                self._rename_in_status(lambda value: library_edit.rewrite_path_many(value, renames, library))
+        if renames:
+            plugs.call_ignore_errors('cards', 'rewrite_paths_many', args=[[list(pair) for pair in renames], library])
+        if queued:
+            # Not here: plugin calls are serialized, waiting for the update would block all of them
+            threading.Thread(target=self._requeue_renamed, args=(update_id, target, renames),
+                             name='mpd.requeue', daemon=True).start()
+
+    def _requeue_renamed(self, update_id, target, renames, timeout: float = 120.0) -> None:
+        """Load the queue again with the renamed files once the MPD database knows them (see :meth:`files_renamed`)"""
+        deadline = time.monotonic() + timeout
+        try:
+            while self._db_is_updating(update_id):
+                if time.monotonic() > deadline:
+                    logger.warning("MPD database update takes too long: queue not adapted to the renamed files")
+                    return
+                time.sleep(0.2)
+            self._load_renamed_queue(target, renames)
+        except Exception as e:
+            logger.error(f"Could not adapt the queue to the renamed files: {e.__class__.__qualname__}: {e}")
+
+    def _load_renamed_queue(self, target, renames) -> None:
+        library = self.get_music_library_path()
+
+        def moved(value):
+            renamed = library_edit.rewrite_path_many(value, renames, library)
+            return value if renamed is None else renamed
+
+        with self.mpd_lock:
+            songs = self.mpd_client.playlistinfo()
+            files = [song.get('file') for song in songs]
+            if not any(library_edit.rewrite_path(f, target, target, library) is not None for f in files):
+                # Something else has been loaded meanwhile
+                return
+            status = self.mpd_client.status()
+            current = self.mpd_client.currentsong()
+            state = status.get('state')
+            elapsed = status.get('elapsed', '0.0')
+            current_file = moved(current.get('file')) if current.get('file') else None
+
+            if all(os.path.abspath(os.path.dirname(os.path.join(library, f))) == target for f in files):
+                # The queue is this folder: load its new content (new order, new files)
+                plc = playlistgenerator.PlaylistCollector(library)
+                plc.parse(os.path.relpath(target, library))
+                uris = list(plc)
+            else:
+                uris = [moved(f) for f in files]
+
+            self.mpd_client.clear()
+            for uri in uris:
+                try:
+                    self.mpd_client.addid(uri)
+                except mpd.base.CommandError as e:
+                    logger.error(f"{e.__class__.__qualname__}: {e} at uri {uri}")
+
+            if current_file and state in ('play', 'pause'):
+                found = self.mpd_client.playlistfind('file', current_file)
+                if found:
+                    if state == 'play':
+                        self.mpd_client.seek(found[0]['pos'], elapsed)
+                    # Remember the position: toggle / play continue there when stopped
+                    self.current_folder_status['CURRENTFILENAME'] = current_file
+                    self.current_folder_status['CURRENTSONGPOS'] = str(found[0]['pos'])
+                    self.current_folder_status['ELAPSED'] = elapsed
+                    self.music_player_status.save_to_json()
+            logger.info(f"Queue loaded again with the renamed files of '{target}' ({len(uris)} songs)")
+
+    @plugs.tag
     def play_folder(self, folder: str, recursive: bool = False, resume: bool = False,
                     start_song: Optional[str] = None) -> None:
         """

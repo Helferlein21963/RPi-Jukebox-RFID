@@ -49,8 +49,10 @@ The Phoniebox plays a folder in alphabetical order of the file names, so new tra
 
 To decide the order yourself, switch on *Set the order myself*: all tracks of the folder are listed with
 the new ones and can be moved. On import, **all files of the folder are renamed** to `01 - …`, `02 - …` in
-that order. The remembered position of the folder is lost, it starts again with the first track. This is
-refused while the folder is loaded in the player: play something else first.
+that order. The remembered position and cards follow the new names. This works also while the folder is
+being played: the current track plays on, then the queue is loaded again in the new order (with the new
+tracks) and continues at the same track and position. A paused folder is stopped at its position instead;
+play continues there.
 
 ## Requirements
 

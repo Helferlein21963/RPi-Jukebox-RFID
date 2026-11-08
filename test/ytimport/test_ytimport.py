@@ -673,7 +673,7 @@ def test_import_with_new_order_renames_the_folder(ctrl, library):
     ]
     with mock.patch.object(utils, 'tag_mp3') as tag, \
             mock.patch.object(utils, 'set_track_number') as set_number, \
-            mock.patch.object(ytimport.plugs, 'call', return_value=[{'file': 'Anderer/1.mp3'}]) as call:
+            mock.patch.object(ytimport.plugs, 'call') as call:
         ctrl.start_import('Lieder', tracks, target='existing', reorder=True)
         wait(ctrl)
     # The old files get the track numbers of the new order
@@ -681,7 +681,12 @@ def test_import_with_new_order_renames_the_folder(ctrl, library):
                                          mock.call(str(folder / '03 - Anfang.mp3'), 3, 3)]
 
     assert ctrl._status['state'] == 'done'
-    call.assert_called_once_with('player', 'ctrl', 'playlistinfo')
+    # The player follows the renamed files (also while it plays the folder)
+    call.assert_called_once_with('player', 'ctrl', 'files_renamed', args=[str(folder), [
+        (str(folder / 'Zebra.mp3'), str(folder / '01 - Zebra.mp3')),
+        (str(folder / '01 - Anfang.mp3'), str(folder / '03 - Anfang.mp3')),
+    ]])
+    ctrl.plugs_call.assert_not_called()
     # The failed track leaves no gap
     assert sorted(os.listdir(folder)) == ['01 - Zebra.mp3', '02 - Affe.mp3', '03 - Anfang.mp3', 'cover.jpg']
     assert (folder / '01 - Zebra.mp3').read_bytes() == b'old Zebra.mp3'
@@ -689,20 +694,19 @@ def test_import_with_new_order_renames_the_folder(ctrl, library):
     assert tag.call_args == mock.call(mock.ANY, 'Affe', '', '', 2, 3, b'cover')
 
 
-def test_import_with_new_order_refused_while_loaded(ctrl, library):
+def test_import_with_new_order_updates_without_player_support(ctrl, library):
     folder = make_folder(library, 'Lieder', ['Zebra.mp3', 'Affe.mp3'])
     fake_download(ctrl)
     fake_convert(ctrl)
     tracks = [{'file': 'Zebra.mp3'}, {'file': 'Affe.mp3'}, {'url': 'https://y/1', 'title': 'Neu'}]
-    with mock.patch.object(utils, 'tag_mp3'), \
-            mock.patch.object(ytimport.plugs, 'call', return_value=[{'file': 'Lieder/Affe.mp3'}]):
+    with mock.patch.object(utils, 'tag_mp3'), mock.patch.object(utils, 'set_track_number'), \
+            mock.patch.object(ytimport.plugs, 'call', side_effect=AttributeError('files_renamed')):
         ctrl.start_import('Lieder', tracks, target='existing', reorder=True)
         wait(ctrl)
 
-    assert ctrl._status['state'] == 'error'
-    assert 'loaded in the player' in ctrl._status['error']
-    assert sorted(os.listdir(folder)) == ['Affe.mp3', 'Zebra.mp3']
-    assert os.listdir(ctrl._tmp_base) == []
+    assert ctrl._status['state'] == 'done'
+    assert sorted(os.listdir(folder)) == ['01 - Zebra.mp3', '02 - Affe.mp3', '03 - Neu.mp3']
+    ctrl.plugs_call.assert_called_once_with('player', 'ctrl', 'update')
 
 
 def test_start_import_existing_validates(ctrl, library):

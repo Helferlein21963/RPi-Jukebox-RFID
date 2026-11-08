@@ -379,3 +379,107 @@ def test_get_folder_content_has_dates(player, maus):
 
     assert [(entry['name'], entry['modified']) for entry in content] == [
         ('01 - Aufsteigen.mp3', 1000), ('Hocke.mp3', 1001)]
+
+
+# ---------------------------------------------------------------------------
+# PlayerMPD.files_renamed: files renamed by another component (YouTube import)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def maus_renamed(maus):
+    """The files of 'Maus' in a new order, as the YouTube import renames them (plus one new file)"""
+    renames = [(os.path.join(maus, 'Hocke.mp3'), os.path.join(maus, '01 - Hocke.mp3')),
+               (os.path.join(maus, '01 - Aufsteigen.mp3'), os.path.join(maus, '03 - Aufsteigen.mp3'))]
+    for old, new in renames:
+        os.rename(old, new)
+    open(os.path.join(maus, '02 - Neu.mp3'), 'w').close()
+    return renames
+
+
+@pytest.fixture
+def no_thread(monkeypatch):
+    thread = mock.Mock()
+    monkeypatch.setattr(playermpd.threading, 'Thread', thread)
+    return thread
+
+
+def test_files_renamed_adapts_status_and_cards(player, maus, maus_renamed, music, no_thread):
+    player.status['audio_folder_status'][maus] = {'CURRENTFILENAME': 'Maus/Hocke.mp3'}
+
+    player.files_renamed('Maus', maus_renamed)
+
+    assert player.status['audio_folder_status'][maus] == {'CURRENTFILENAME': 'Maus/01 - Hocke.mp3'}
+    assert player.plugs_calls == [(('cards', 'rewrite_paths_many'),
+                                   {'args': [[list(pair) for pair in maus_renamed], music]})]
+    player.mpd_client.update.assert_called_once()
+    # Nothing of the folder in the queue: nothing to wait for
+    no_thread.assert_not_called()
+
+
+def test_files_renamed_requeues_after_the_update(player, maus, maus_renamed, no_thread):
+    player.mpd_client.playlistinfo.return_value = [{'file': 'Maus/Hocke.mp3'}]
+    player.mpd_client.update.return_value = '7'
+
+    player.files_renamed(maus, maus_renamed)
+
+    no_thread.assert_called_once()
+    assert no_thread.call_args.kwargs['args'] == ('7', maus, maus_renamed)
+    no_thread.return_value.start.assert_called_once()
+    # The queue is not touched before MPD knows the new names
+    player.mpd_client.clear.assert_not_called()
+
+
+def test_load_renamed_queue_of_the_folder_continues(player, maus, maus_renamed):
+    player.mpd_client.playlistinfo.return_value = [{'file': 'Maus/01 - Aufsteigen.mp3'}, {'file': 'Maus/Hocke.mp3'}]
+    player.mpd_client.status.return_value = {'state': 'play', 'elapsed': '42.5'}
+    player.mpd_client.currentsong.return_value = {'file': 'Maus/Hocke.mp3'}
+    player.mpd_client.playlistfind.return_value = [{'pos': '0'}]
+    player.current_folder_status = {}
+
+    player._load_renamed_queue(maus, maus_renamed)
+
+    player.mpd_client.clear.assert_called_once()
+    # The new content of the folder: new order and the new file
+    assert player.mpd_client.addid.call_args_list == [
+        mock.call(os.path.join(maus, name)) for name in ['01 - Hocke.mp3', '02 - Neu.mp3', '03 - Aufsteigen.mp3']]
+    player.mpd_client.playlistfind.assert_called_once_with('file', 'Maus/01 - Hocke.mp3')
+    player.mpd_client.seek.assert_called_once_with('0', '42.5')
+    assert player.current_folder_status == {'CURRENTFILENAME': 'Maus/01 - Hocke.mp3', 'CURRENTSONGPOS': '0',
+                                            'ELAPSED': '42.5'}
+
+
+def test_load_renamed_queue_paused_keeps_other_songs(player, maus, maus_renamed):
+    player.mpd_client.playlistinfo.return_value = [{'file': 'Other/02.mp3'}, {'file': 'Maus/Hocke.mp3'}]
+    player.mpd_client.status.return_value = {'state': 'pause', 'elapsed': '3.0'}
+    player.mpd_client.currentsong.return_value = {'file': 'Maus/Hocke.mp3'}
+    player.mpd_client.playlistfind.return_value = [{'pos': '1'}]
+    player.current_folder_status = {}
+
+    player._load_renamed_queue(maus, maus_renamed)
+
+    assert player.mpd_client.addid.call_args_list == [mock.call('Other/02.mp3'), mock.call('Maus/01 - Hocke.mp3')]
+    # Paused: stays stopped at the position, toggle continues there
+    player.mpd_client.seek.assert_not_called()
+    assert player.current_folder_status['CURRENTFILENAME'] == 'Maus/01 - Hocke.mp3'
+    assert player.current_folder_status['ELAPSED'] == '3.0'
+
+
+def test_load_renamed_queue_replaced_meanwhile(player, maus, maus_renamed):
+    player.mpd_client.playlistinfo.return_value = [{'file': 'Other/02.mp3'}]
+
+    player._load_renamed_queue(maus, maus_renamed)
+
+    player.mpd_client.clear.assert_not_called()
+
+
+def test_requeue_waits_for_the_update(player, maus, maus_renamed, monkeypatch):
+    updating = [True, True, False]
+    monkeypatch.setattr(player, '_db_is_updating', lambda update_id: updating.pop(0), raising=False)
+    monkeypatch.setattr(playermpd.time, 'sleep', lambda seconds: None)
+    load = mock.Mock()
+    monkeypatch.setattr(player, '_load_renamed_queue', load, raising=False)
+
+    player._requeue_renamed('7', maus, maus_renamed)
+
+    assert updating == []
+    load.assert_called_once_with(maus, maus_renamed)

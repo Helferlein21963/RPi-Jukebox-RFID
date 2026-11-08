@@ -171,7 +171,7 @@
       "folder-existing-reorder_one": "Existing folder with {{count}} track – set the order below",
       "folder-existing-reorder_other": "Existing folder with {{count}} tracks – set the order below",
       "reorder": "Set the order myself",
-      "reorder-hint": "All files of the folder are renamed in this order (01 - …, 02 - …). The folder then starts again with the first track.",
+      "reorder-hint": "All files of the folder are renamed in this order (01 - …, 02 - …). The remembered position is kept, also while the folder is playing.",
       "tracks-reorder": "Order in the folder · {{existing}} existing, {{selected}} of {{total}} new selected",
       "existing": "Already in the folder",
       "new": "New",

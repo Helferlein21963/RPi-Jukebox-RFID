@@ -680,13 +680,12 @@ class YtImport:
     def _finish_existing(self, folder_name, out_dir, target, new_files, renames):
         """
         Add the new files to an existing folder and rename its files to the new order. Renaming goes over
-        temporary names, so that no file overwrites another when names are swapped
+        temporary names, so that no file overwrites another when names are swapped. The player follows the
+        renamed files, also while it plays the folder
         """
         if not os.path.isdir(target):
             raise FileNotFoundError(f"Folder '{folder_name}' does not exist any more")
         changed = [(old, new) for old, new, _, _ in renames if old != new]
-        if changed:
-            self._check_not_loaded(folder_name)
         for name in new_files:
             if os.path.exists(os.path.join(target, name)) and name not in {old for old, _ in changed}:
                 raise FileExistsError(f"'{name}' exists already in '{folder_name}'")
@@ -703,7 +702,23 @@ class YtImport:
         if changed:
             logger.info(f"Renamed {len(changed)} files of '{folder_name}' to the new order")
         self._set_permissions(target)
-        plugs.call_ignore_errors('player', 'ctrl', 'update')
+        if changed:
+            self._player_follow(target, [(os.path.join(target, old), os.path.join(target, new))
+                                         for old, new in changed])
+        else:
+            plugs.call_ignore_errors('player', 'ctrl', 'update')
+
+    @staticmethod
+    def _player_follow(target, renames):
+        """
+        Let the player follow the renamed files (queue, remembered positions, cards) and update its database.
+        Without that (player without ``files_renamed``) at least the database is updated
+        """
+        try:
+            plugs.call('player', 'ctrl', 'files_renamed', args=[target, renames])
+        except Exception as e:
+            logger.warning(f"Player could not follow the renamed files: {e.__class__.__name__}: {e}")
+            plugs.call_ignore_errors('player', 'ctrl', 'update')
 
     @staticmethod
     def _renumber(target, renames):
@@ -715,19 +730,6 @@ class YtImport:
                 utils.set_track_number(os.path.join(target, name), number, total)
             except Exception as e:
                 logger.warning(f"Could not set the track number of '{name}': {e}")
-
-    @staticmethod
-    def _check_not_loaded(folder_name):
-        """Files can't be renamed while the player has them in its queue (it would stop finding them)"""
-        try:
-            queue = plugs.call('player', 'ctrl', 'playlistinfo') or []
-        except Exception as e:
-            logger.warning(f"Could not check the queue of the player: {e}")
-            return
-        prefix = folder_name.rstrip('/') + '/'
-        if any(str(song.get('file', '')).startswith(prefix) for song in queue):
-            raise RuntimeError(f"'{folder_name}' is loaded in the player: play something else first "
-                               "or clear the queue, then import again")
 
     @staticmethod
     def _set_permissions(target):
