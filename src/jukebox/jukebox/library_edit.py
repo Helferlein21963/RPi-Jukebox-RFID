@@ -1,6 +1,6 @@
 """
 Helpers to rename folders and songs of the music library and to change the order of a folder
-(used by the player's ``rename`` and ``reorder``).
+(used by the player's ``rename`` and ``reorder``), and to find the neighbor of a folder (``play_next_folder``).
 
 Pure file system functions without a running jukebox: checking names, renaming, rewriting stored paths
 (card database, remembered folder positions) and writing the title and track number tags.
@@ -8,7 +8,7 @@ Pure file system functions without a running jukebox: checking names, renaming, 
 
 import os
 import re
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 #: Characters not allowed in names: on Linux ``/``, the rest for copies over Samba / to Windows
 _FORBIDDEN_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -58,6 +58,40 @@ def resolve_in_library(library: str, path: str) -> str:
     if not os.path.lexists(target):
         raise FileNotFoundError(f"'{path}' does not exist")
     return target
+
+
+def neighbor_folder(library: str, folder: str, step: int,
+                    is_playable: Optional[Callable[[str], bool]] = None) -> Optional[str]:
+    """
+    The next (``step=1``) or previous (``step=-1``) folder next to ``folder``, in the same parent folder.
+
+    Folders are in alphabetical order (case-insensitive, like the playlist generator and the library); after the
+    last one comes the first again. Hidden folders (``.name``) and folders ``is_playable`` rejects (e.g. empty
+    ones) are skipped. ``folder`` itself need not exist any more (e.g. renamed): its name still sets the position.
+
+    :param library: Absolute path of the music library
+    :param folder: Absolute path, or relative to the library
+    :param step: 1 for the next folder, -1 for the previous one
+    :param is_playable: Check for a candidate (absolute path); default: every folder
+    :return: Absolute path of the neighbor, or None if there is no other (playable) folder
+    :raises ValueError: if the folder is the library itself or outside of it
+    """
+    library = os.path.abspath(library)
+    target = os.path.abspath(os.path.join(library, folder))
+    if os.path.commonpath([library, target]) != library or target == library:
+        raise ValueError(f"'{folder}' is not inside the music library")
+    parent, name = os.path.split(target)
+    names = [entry.name for entry in os.scandir(parent)
+             if entry.is_dir(follow_symlinks=True) and not entry.name.startswith('.')]
+    if name not in names:
+        names.append(name)
+    names.sort(key=lambda n: (n.casefold(), n))
+    pos = names.index(name)
+    for i in range(1, len(names)):
+        candidate = os.path.join(parent, names[(pos + step * i) % len(names)])
+        if is_playable is None or is_playable(candidate):
+            return candidate
+    return None
 
 
 def new_path(old: str, new_name: str) -> str:

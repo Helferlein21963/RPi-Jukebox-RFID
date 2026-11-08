@@ -70,6 +70,18 @@ cmd_alias_definitions = {
         'method': 'rewind',
         'note': 'Restart the current folder with the first song',
         'ignore_card_removal_action': True},
+    'next_folder': {
+        'package': 'player',
+        'plugin': 'ctrl',
+        'method': 'play_next_folder',
+        'note': 'Play the next folder in the same parent folder (alphabetical)',
+        'ignore_card_removal_action': True},
+    'prev_folder': {
+        'package': 'player',
+        'plugin': 'ctrl',
+        'method': 'play_prev_folder',
+        'note': 'Play the previous folder in the same parent folder (alphabetical)',
+        'ignore_card_removal_action': True},
     'toggle': {
         'package': 'player',
         'plugin': 'ctrl',

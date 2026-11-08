@@ -577,6 +577,67 @@ class PlayerMPD:
         self.play_folder(folder)
 
     @plugs.tag
+    def play_next_folder(self) -> Optional[str]:
+        """
+        Play the next folder: the one after the current folder in the same parent folder (alphabetical order,
+        after the last one the first again). Folders without songs are skipped.
+
+        The current folder is the last played one, or else the folder of the current song (e.g. after an album
+        or after a restart with a loaded queue). Like a card swipe, the folder continues at its remembered position
+        if ``playermpd.play_card_resume`` is enabled. Sub-folders are played as well.
+
+        :return: The folder now playing (relative to the music library), or None if there is none
+        """
+        return self._play_neighbor_folder(1)
+
+    @plugs.tag
+    def play_prev_folder(self) -> Optional[str]:
+        """
+        Play the previous folder: the one before the current folder in the same parent folder.
+
+        See :meth:`play_next_folder`.
+
+        :return: The folder now playing (relative to the music library), or None if there is none
+        """
+        return self._play_neighbor_folder(-1)
+
+    def _current_folder(self) -> Optional[str]:
+        """Last played folder, or else the folder of the current song (None for streams or an empty queue)"""
+        folder = self.music_player_status['player_status'].get('last_played_folder')
+        if folder:
+            return folder
+        song = (self.mpd_retry_with_mutex(self.mpd_client.currentsong) or {}).get('file', '')
+        if not song or '://' in song or not os.path.dirname(song):
+            return None
+        return os.path.dirname(song)
+
+    def _play_neighbor_folder(self, step: int) -> Optional[str]:
+        library = self.get_music_library_path()
+
+        def is_playable(path):
+            plc = playlistgenerator.PlaylistCollector(library)
+            plc.parse(path, recursive=True)
+            return len(plc.playlist) > 0
+
+        with self.mpd_lock:
+            current = self._current_folder()
+            if not current:
+                logger.info("No current folder: nothing to switch from")
+                return None
+            try:
+                target = library_edit.neighbor_folder(library, current, step, is_playable)
+            except (ValueError, OSError) as e:
+                logger.warning(f"No neighbor folder of '{current}': {e}")
+                return None
+            if target is None:
+                logger.info(f"No other folder next to '{current}'")
+                return None
+            # Same form as the current folder, so a card of the new folder is recognized as a second swipe
+            folder = target if os.path.isabs(current) else os.path.relpath(target, library)
+            self.play_folder(folder, recursive=True, resume=self.play_card_resume)
+            return folder
+
+    @plugs.tag
     def toggle(self):
         """
         Toggle pause state, i.e. do a pause / resume depending on current state

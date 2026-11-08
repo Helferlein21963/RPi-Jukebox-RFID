@@ -16,6 +16,8 @@ Replace `phoniebox.local` with the name or IP address of your Phoniebox.
 | `/api/alias/toggle` | Play / pause |
 | `/api/alias/next_song` | Next song |
 | `/api/alias/prev_song` | Previous song |
+| `/api/alias/next_folder` | Next folder (see below) |
+| `/api/alias/prev_folder` | Previous folder |
 | `/api/alias/change_volume?args=5` | Louder (by 5 %) |
 | `/api/alias/change_volume?args=-5` | Quieter |
 | `/api/alias/play_card?args=Hoerspiele/Max` | Play a folder like a card swipe (a second "swipe" pauses, see second swipe action) |
@@ -33,6 +35,13 @@ to `/etc/nginx/sites-available/default` and run `sudo systemctl restart nginx`.
 JSON object (`kwargs={"folder":"Hoerspiele/Max","recursive":true}`). A folder name that consists only of digits
 must be quoted: `args=["2024"]`. Encode special characters in a URL (space: `%20`). Instead of the
 query you can send a JSON body with POST: `{"args": [5]}` / `{"kwargs": {...}}`.
+
+**Next / previous folder** switches to the neighbor of the current folder in the same parent folder, in
+alphabetical order (as in the library); after the last folder comes the first again. Example: `Hoerspiele/Folge_02`
+→ `Hoerspiele/Folge_03`. Folders without songs are skipped, sub-folders are played as well, and the folder
+continues where it was left if *continue where left off* is enabled for cards (Settings → RFID Cards). The current
+folder is the one played last, or else the folder of the current song. The aliases `next_folder` / `prev_folder`
+also work for cards and GPIO buttons.
 
 GET and POST both work. The answer is JSON: `{"result": ...}`, or `{"error": "..."}` with status 404 (unknown
 URL / alias / RPC call), 400 (wrong arguments) or 500 (error while running the command).
@@ -53,6 +62,16 @@ curl http://phoniebox.local/api/alias/toggle
 4. Repeat for the other buttons (next, louder, quieter, a favorite folder, ...).
 5. Long-press the home screen → *Widgets* → *HTTP Shortcuts* and drag a widget onto the home screen; choose the
    shortcut. Some launchers can also put the shortcuts directly on the home screen.
+
+HTTP Shortcuts has one button per widget. For a remote control, put the widgets side by side, e.g.:
+
+| | | |
+|---|---|---|
+| ⏪ `prev_folder` | ⏯ `toggle` | ⏩ `next_folder` |
+| ⏮ `prev_song` | 🔉 `change_volume?args=-5` / 🔊 `args=5` | ⏭ `next_song` |
+
+Hide the labels of the widgets (option of the widget) and choose matching icons, then the buttons look like
+one control.
 
 The phone must be in the same network as the Phoniebox. If `phoniebox.local` doesn't resolve on your phone,
 use the IP address of the box.
