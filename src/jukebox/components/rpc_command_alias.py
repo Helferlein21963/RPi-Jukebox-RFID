@@ -147,7 +147,7 @@ cmd_alias_definitions = {
         'package': 'timers',
         'plugin': 'timer_fade_volume',
         'method': 'start',
-        'title': 'Start the volume fade out timer and shutdown',
+        'title': 'Start the volume fade out timer (then stops the player)',
         'ignore_card_removal_action': True},
     'timer_stop_player': {
         'package': 'timers',

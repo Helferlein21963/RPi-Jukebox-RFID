@@ -2,6 +2,7 @@ import React from 'react'
 import { Route, HashRouter, Routes } from 'react-router-dom'
 
 import Cards from './components/Cards';
+import Clock from './components/Clock';
 import Import from './components/Import';
 import Library from './components/Library';
 import Navigation from './components/Navigation';
@@ -23,6 +24,7 @@ const Router = () => {
           overflow: 'hidden',
         }}
       >
+        <Clock />
         <Routes>
           <Route
             index

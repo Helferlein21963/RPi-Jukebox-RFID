@@ -1,14 +1,30 @@
 # RPi-Jukebox-RFID Version 3
 # Copyright (c) See file LICENSE in project root folder
+"""Timers: shut down, stop the player or fade out the volume and stop the player after a given time
 
-from jukebox.multitimer import (GenericTimerClass, GenericMultiTimerClass)
+Each timer is a plugin (``timers.timer_shutdown``, ``timers.timer_stop_player``, ``timers.timer_fade_volume``)
+with the methods ``start(wait_seconds)``, ``cancel``, ``toggle`` and ``get_state``.
+The fade out timer also takes the fade duration: ``start(wait_seconds, fade_seconds)``.
+Every start and end is published on the topic of the timer's name (e.g. ``timers.timer_shutdown``).
+"""
+
 import logging
+from typing import Optional
+
 import jukebox.cfghandler
 import jukebox.plugs as plugin
+from jukebox.multitimer import GenericTimerClass
 
 
 logger = logging.getLogger('jb.timers')
 cfg = jukebox.cfghandler.get_handler('jukebox')
+
+#: Target time between two volume steps of the fade out
+FADE_STEP_SECONDS = 0.5
+#: Most volume steps of a fade out (the volume has 100 levels)
+FADE_MAX_STEPS = 100
+#: Fade out duration if neither the call nor the config set one
+FADE_DEFAULT_SECONDS = 10
 
 
 # ---------------------------------------------------------------------------
@@ -24,34 +40,98 @@ def stop_player():
     plugin.call_ignore_errors('player', 'ctrl', 'stop')
 
 
-class VolumeFadeOutActionClass:
-    def __init__(self, iterations):
-        self.iterations = iterations
-        # Get the current volume, calculate step size
-        self.volume = plugin.call('volume', 'ctrl', 'get_volume')
-        self.step = float(self.volume) / iterations
+class VolumeFadeOutAction:
+    """Timer action: lower the volume in ``steps`` steps, then stop the player
+
+    Called with the decreasing ``iteration`` (``steps - 1`` ... ``0``).
+    After the stop, the volume is set back to its value at the start of the fade,
+    so the next playback is not silent.
+    """
+
+    def __init__(self, steps: int):
+        self.steps = steps
+        self.start_volume = None
 
     def __call__(self, iteration):
-        self.volume = self.volume - self.step
-        logger.debug(f"Decrease volume to {self.volume} (Iteration index {iteration}/{self.iterations}-1)")
-        plugin.call_ignore_errors('volume', 'ctrl', 'set_volume', args=[int(self.volume)])
-        if iteration == 0:
-            logger.debug("Shut down from volume fade out")
-            plugin.call_ignore_errors('host', 'shutdown')
+        if self.start_volume is None:
+            # Read the volume only when the fade begins: it may have been changed since the timer started
+            try:
+                self.start_volume = int(plugin.call('volume', 'ctrl', 'get_volume'))
+            except Exception as e:
+                logger.error(f"Volume fade out: cannot get the volume: {e}")
+                self.start_volume = -1
+            logger.info(f"Fading out the volume from {self.start_volume} on timer request...")
+        if iteration > 0:
+            if self.start_volume > 0:
+                volume = round(self.start_volume * iteration / self.steps)
+                plugin.call_ignore_errors('volume', 'ctrl', 'set_volume', args=[volume])
+            return
+        stop_player()
+        if self.start_volume >= 0:
+            plugin.call_ignore_errors('volume', 'ctrl', 'set_volume', args=[self.start_volume])
+
+
+def fade_plan(wait_seconds: float, fade_seconds: float):
+    """Split a fade out timer into (delay, interval, steps)
+
+    The timer waits ``delay`` seconds, then lowers the volume ``steps`` times every ``interval`` seconds
+    (the last step stops the player). In total this takes ``wait_seconds``;
+    a fade longer than the wait time takes the whole wait time.
+    """
+    wait_seconds = max(0.0, float(wait_seconds))
+    fade = min(max(0.0, float(fade_seconds)), wait_seconds)
+    steps = max(1, min(FADE_MAX_STEPS, round(fade / FADE_STEP_SECONDS)))
+    return wait_seconds - fade, fade / steps, steps
+
+
+class VolumeFadeOutTimerClass(GenericTimerClass):
+    """Timer that fades out the volume during the last ``fade_seconds`` of the wait time and then stops the player
+
+    If the wait time is shorter than ``fade_seconds``, the fade takes the whole wait time.
+    """
+
+    def __init__(self, name, wait_seconds: float, fade_seconds: float):
+        self._default_fade_seconds = fade_seconds
+        self._fade_seconds = fade_seconds
+        super().__init__(name, wait_seconds, None)
+
+    @plugin.tag
+    def start(self, wait_seconds=None, fade_seconds=None):
+        """Start the timer
+
+        :param wait_seconds: Time until the player stops (default: the last or configured time)
+        :param fade_seconds: Fade out duration at the end of that time, for this run only
+            (default: ``timers.volume_fade_out.fade_duration_sec``)
+        """
+        if self.is_alive():
+            logger.error(f"Timer '{self._name}' started! Ignoring start command.")
+            return
+        if wait_seconds is not None:
+            self._wait_seconds = wait_seconds
+        self._fade_seconds = self._default_fade_seconds if fade_seconds is None else fade_seconds
+        delay, interval, steps = fade_plan(self._wait_seconds, self._fade_seconds)
+        self._start_thread(interval, steps, VolumeFadeOutAction(steps), delay=delay)
+
+    @plugin.tag
+    def get_state(self):
+        """Get the current state and config as dictionary"""
+        state = super().get_state()
+        state['fade_seconds'] = self._fade_seconds
+        state['type'] = 'VolumeFadeOutTimerClass'
+        return state
 
 
 # ---------------------------------------------------------------------------
 # Create the timers
 # ---------------------------------------------------------------------------
-timer_shutdown: GenericTimerClass
-timer_stop_player: GenericTimerClass
-timer_fade_volume: GenericMultiTimerClass
+# Created in finalize
+timer_shutdown: Optional[GenericTimerClass] = None
+timer_stop_player: Optional[GenericTimerClass] = None
+timer_fade_volume: Optional[VolumeFadeOutTimerClass] = None
 
 
 @plugin.finalize
 def finalize():
-    # TODO: Example with how to call the timers from RPC?
-
     # Create the various timers with fitting doc for plugin reference
     global timer_shutdown
     timeout = cfg.setndefault('timers', 'shutdown', 'default_timeout_sec', value=60 * 60)
@@ -70,11 +150,11 @@ def finalize():
     plugin.register(timer_stop_player, name='timer_stop_player', package=plugin.loaded_as(__name__))
 
     global timer_fade_volume
-    timeout = cfg.setndefault('timers', 'volume_fade_out', 'default_time_per_iteration_sec', value=15 * 60)
-    steps = cfg.setndefault('timers', 'volume_fade_out', 'number_of_steps', value=10)
-    timer_fade_volume = GenericMultiTimerClass(f"{plugin.loaded_as(__name__)}.timer_fade_volume",
-                                               steps, timeout, VolumeFadeOutActionClass)
-    timer_fade_volume.__doc__ = "Timer step-wise volume fade out and shutdown"
+    timeout = cfg.setndefault('timers', 'volume_fade_out', 'default_timeout_sec', value=60 * 60)
+    fade_seconds = cfg.setndefault('timers', 'volume_fade_out', 'fade_duration_sec', value=FADE_DEFAULT_SECONDS)
+    timer_fade_volume = VolumeFadeOutTimerClass(f"{plugin.loaded_as(__name__)}.timer_fade_volume",
+                                                timeout, fade_seconds)
+    timer_fade_volume.__doc__ = "Timer for a volume fade out and player stop"
     plugin.register(timer_fade_volume, name='timer_fade_volume', package=plugin.loaded_as(__name__))
 
     # The idle Timer does work in a little sneaky way
@@ -95,10 +175,7 @@ def finalize():
 
 @plugin.atexit
 def atexit(**ignored_kwargs):
-    global timer_shutdown
     timer_shutdown.cancel()
-    global timer_stop_player
     timer_stop_player.cancel()
-    global timer_fade_volume
     timer_fade_volume.cancel()
     return [timer_shutdown.timer_thread, timer_stop_player.timer_thread, timer_fade_volume.timer_thread]

@@ -14,6 +14,9 @@ const SUBSCRIPTIONS = [
   'host.temperature.cpu',
   'playerstatus',
   'rfid.card_id',
+  'timers.timer_fade_volume',
+  'timers.timer_shutdown',
+  'timers.timer_stop_player',
   'volume.level',
   'ytimport.status',
 ];

@@ -27,10 +27,13 @@ class MultiTimer(threading.Thread):
 
     Initiates start and publishing by calling self.publish_callback
 
+    An optional delay is waited once before the first interval (cancellable as well).
+
     Note: Inspired by threading.Timer and generally using the same API"""
 
-    def __init__(self, interval, iterations, function: Callable, args=None, kwargs=None):
+    def __init__(self, interval, iterations, function: Callable, args=None, kwargs=None, delay=0):
         super().__init__()
+        self.delay = delay
         self.interval = interval
         self.iterations = iterations
         self.function = function
@@ -49,6 +52,10 @@ class MultiTimer(threading.Thread):
 
     def trigger(self):
         self.event.set()
+
+    def is_cancelled(self):
+        """True once the timer was cancelled or has run all iterations (the thread may still be finishing)"""
+        return self._cmd_cancel
 
     def run_endless(self):
         while True:
@@ -72,10 +79,22 @@ class MultiTimer(threading.Thread):
             # logger.debug(f"Execute timer action #{iteration} of '{self.name}'.")
             self.function(*self.args, iteration=iteration, **self.kwargs)
 
+    def wait_delay(self):
+        """Wait the initial delay, return False if cancelled meanwhile"""
+        if self.delay > 0:
+            self.event.wait(self.delay)
+            if self.event.is_set():
+                if self._cmd_cancel:
+                    return False
+                self.event.clear()
+        return True
+
     def run(self):
         if self.publish_callback is not None:
             self.publish_callback()
-        if self.iterations < 0:
+        if not self.wait_delay():
+            logger.debug(f"Timer '{self.name}' cancelled during the initial delay")
+        elif self.iterations < 0:
             logger.debug(f"Start timer '{self.name} in endless mode")
             self.run_endless()
         else:
@@ -118,13 +137,25 @@ class GenericTimerClass:
             return
         if wait_seconds is not None:
             self._wait_seconds = wait_seconds
-        self.timer_thread = MultiTimer(self._wait_seconds, self._iterations, self._function, *self.args, **self.kwargs)
-        self.timer_thread.daemon = True
-        self.timer_thread.publish_callback = self._publish_core
+        self._start_thread(self._wait_seconds, self._iterations, self._function)
+
+    def _start_thread(self, interval, iterations, function, delay=0):
+        """Create and start the timer thread (delay: wait once before the first interval)"""
+        thread = MultiTimer(interval, iterations, function, *self.args, delay=delay, **self.kwargs)
+        thread.daemon = True
+
+        # A cancelled thread may still be finishing while a new one was started already:
+        # only the current thread may publish, else its final 'disabled' would hide the new timer
+        def publish_callback(enabled=None):
+            if self.timer_thread is thread:
+                self._publish_core(enabled)
+
+        thread.publish_callback = publish_callback
         if self._name is not None:
-            self.timer_thread.name = self._name
-        self._start_time = int(time())
-        self.timer_thread.start()
+            thread.name = self._name
+        self.timer_thread = thread
+        self._start_time = time()
+        thread.start()
 
     @plugin.tag
     def cancel(self):
@@ -148,10 +179,10 @@ class GenericTimerClass:
 
     @plugin.tag
     def is_alive(self):
-        """Check if timer is active"""
+        """Check if timer is active (a cancelled timer is inactive, even if its thread is still finishing)"""
         if self.timer_thread is None:
             return False
-        return self.timer_thread.is_alive()
+        return self.timer_thread.is_alive() and not self.timer_thread.is_cancelled()
 
     @plugin.tag
     def get_timeout(self):
@@ -179,12 +210,12 @@ class GenericTimerClass:
     @plugin.tag
     def get_state(self):
         """Get the current state and config as dictionary"""
-        remaining_seconds = max(
-            0,
-            self.get_timeout() - (int(time()) - self._start_time)
-        )
+        enabled = self.is_alive()
+        remaining_seconds = 0
+        if enabled:
+            remaining_seconds = round(max(0, self.get_timeout() - (time() - self._start_time)), 1)
 
-        return {'enabled': self.is_alive(),
+        return {'enabled': enabled,
                 'remaining_seconds': remaining_seconds,
                 'wait_seconds': self.get_timeout(),
                 'type': 'GenericTimerClass'}

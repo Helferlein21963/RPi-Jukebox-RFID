@@ -117,8 +117,11 @@ timers:
   stop_player:
     default_timeout_sec: 3600
   volume_fade_out:
-    default_time_per_iteration_sec: 900
-    number_of_steps: 10
+    default_timeout_sec: 3600
+    # The volume is lowered step by step during the last fade_duration_sec of the timer,
+    # then the player stops and the volume is set back to its value before the fade.
+    # Default for cards / GPIO; the web app sends its own value with every start
+    fade_duration_sec: 10
 host:
   # Do not actually execute system shutdown and reboot commands
   debug_mode: false
