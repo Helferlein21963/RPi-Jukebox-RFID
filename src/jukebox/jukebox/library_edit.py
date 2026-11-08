@@ -1,18 +1,27 @@
 """
-Helpers to rename folders and songs of the music library (used by the player's ``rename``).
+Helpers to rename folders and songs of the music library and to change the order of a folder
+(used by the player's ``rename`` and ``reorder``).
 
 Pure file system functions without a running jukebox: checking names, renaming, rewriting stored paths
-(card database, remembered folder positions) and writing the title tag.
+(card database, remembered folder positions) and writing the title and track number tags.
 """
 
 import os
 import re
-from typing import Optional
+from typing import List, Optional, Sequence, Tuple
 
 #: Characters not allowed in names: on Linux ``/``, the rest for copies over Samba / to Windows
 _FORBIDDEN_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 NAME_MAX_LENGTH = 120
+
+#: Leading number of a file name (``07 - Title.mp3``)
+NUMBER_RE = re.compile(r'^(\d+)')
+#: Leading number with its separator: ``07 - ``, ``07_``, ``07.``, ``07) ``, ``07 ``
+_NUMBER_PREFIX_RE = re.compile(r'^\d+(?:\s*[-_.)]+\s*|\s+)')
+
+#: Files that set the content of their folder themselves: the order of such a folder is not set by file names
+SPECIAL_FILES = ('livestream.txt', 'podcast.txt', '.m3u')
 
 
 def clean_name(name: str) -> str:
@@ -142,3 +151,131 @@ def set_title(path: str, title: str) -> None:
         audio.add_tags()
     audio['title'] = [title]
     audio.save()
+
+
+def rewrite_path_many(value, renames: Sequence[Tuple[str, str]], library: str) -> Optional[str]:
+    """
+    ``value`` after several entries were renamed at once (e.g. the files of a folder that swap names),
+    None if it is not affected.
+
+    Unlike calling :func:`rewrite_path` one after the other, a value is moved once only: with ``a → b`` and
+    ``b → a``, ``a`` becomes ``b`` (and not ``a`` again).
+
+    :param renames: ``(old, new)`` absolute paths
+    """
+    for old, new in renames:
+        moved = rewrite_path(value, old, new, library)
+        if moved is not None:
+            return moved
+    return None
+
+
+def track_number(filename: str) -> Optional[int]:
+    """The number a file name starts with (``07 - Title.mp3`` → 7), None if it has none"""
+    match = NUMBER_RE.match(filename)
+    return int(match.group(1)) if match else None
+
+
+def strip_number(stem: str) -> str:
+    """Title part of a file name without its leading number: ``07 - Title`` → ``Title``"""
+    stripped = _NUMBER_PREFIX_RE.sub('', stem, count=1).strip()
+    return stripped or stem
+
+
+def is_special_file(filename: str) -> bool:
+    """True for a file that sets the content of its folder (livestream, podcast, M3U playlist)"""
+    return filename.casefold().endswith(SPECIAL_FILES)
+
+
+def reorder_names(files: Sequence[str]) -> List[str]:
+    """
+    New names of the files of a folder in the order given: ``01 - Title.mp3``, ``02 - ...``.
+
+    The old leading number is dropped, the extension stays. The folder is played in alphabetical order, so the
+    numbers (with leading zeros) set the play order.
+    """
+    width = max(2, len(str(len(files))))
+    names = []
+    for idx, filename in enumerate(files):
+        stem, extension = os.path.splitext(filename)
+        try:
+            title = clean_name(strip_number(stem))
+        except ValueError:
+            title = 'Track'
+        names.append(f'{idx + 1:0{width}d} - {title}{extension}')
+    return names
+
+
+def rename_files(folder: str, renames: Sequence[Tuple[str, str]]) -> None:
+    """
+    Rename files of one folder at once, also when they swap their names.
+
+    First every file gets a temporary name, then its new one. If something fails, the files get their old names
+    back as far as possible.
+
+    :param folder: Absolute path of the folder
+    :param renames: ``(old name, new name)``, names without path
+    :raises FileExistsError: if a new name is taken by a file that is not renamed
+    """
+    renames = [(old, new) for old, new in renames if old != new]
+    leaving = {old.casefold() for old, _ in renames}
+    for _, new in renames:
+        if os.path.lexists(os.path.join(folder, new)) and new.casefold() not in leaving:
+            raise FileExistsError(f"'{new}' already exists")
+
+    done = []
+    try:
+        for idx, (old, new) in enumerate(renames):
+            temp = os.path.join(folder, f'.reorder_{idx}{os.path.splitext(old)[1]}')
+            os.rename(os.path.join(folder, old), temp)
+            done.append((old, temp, None))
+        for idx, (old, temp, _) in enumerate(done):
+            new = renames[idx][1]
+            os.rename(temp, os.path.join(folder, new))
+            done[idx] = (old, temp, new)
+    except OSError:
+        for old, temp, new in reversed(done):
+            current = os.path.join(folder, new) if new else temp
+            try:
+                os.rename(current, os.path.join(folder, old))
+            except OSError:
+                pass
+        raise
+
+
+def set_track_number(path: str, number: int, total: int) -> bool:
+    """
+    Write the track number (``3/12``) of a song; the other tags stay, MP3 files keep their ID3 version.
+
+    The modification time moves on by one second only: sorting by date keeps the order of the files, and MPD
+    still notices the change (it reads the tags again when the time differs).
+
+    :return: False if it could not be written (mutagen missing, file without a tag format)
+    """
+    if not title_supported():
+        return False
+    import mutagen
+
+    stat = os.stat(path)
+    try:
+        if path.casefold().endswith('.mp3'):
+            from mutagen.id3 import ID3, ID3NoHeaderError, TRCK
+            try:
+                tags = ID3(path)
+                version = 3 if tags.version[:2] == (2, 3) else 4
+            except ID3NoHeaderError:
+                tags, version = ID3(), 3
+            tags.setall('TRCK', [TRCK(encoding=3, text=f'{number}/{total}')])
+            tags.save(path, v2_version=version)
+        else:
+            audio = mutagen.File(path, easy=True)
+            if audio is None:
+                return False
+            if audio.tags is None:
+                audio.add_tags()
+            audio['tracknumber'] = [f'{number}/{total}']
+            audio.save()
+    except (mutagen.MutagenError, OSError, KeyError, ValueError):
+        return False
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    return True

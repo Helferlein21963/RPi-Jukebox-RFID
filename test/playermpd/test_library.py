@@ -28,13 +28,14 @@ def test_only_songs_with_reduced_fields(player):
     player.mpd_client.listallinfo.return_value = [
         {'directory': 'A'},
         {'file': 'A/01.mp3', 'title': 'Song', 'artist': 'Artist', 'album': 'Album',
-         'albumartist': 'Album Artist', 'duration': '123.4', 'track': '1', 'genre': 'Pop'},
+         'albumartist': 'Album Artist', 'duration': '123.4', 'track': '1', 'genre': 'Pop',
+         'last-modified': '2026-11-08T10:00:00Z'},
         {'playlist': 'list.m3u'},
     ]
 
     assert player.list_all_songs() == [
         {'file': 'A/01.mp3', 'title': 'Song', 'artist': 'Artist', 'album': 'Album',
-         'albumartist': 'Album Artist', 'duration': '123.4'},
+         'albumartist': 'Album Artist', 'duration': '123.4', 'modified': '2026-11-08T10:00:00Z'},
     ]
 
 
@@ -42,7 +43,8 @@ def test_missing_tags_are_empty_and_time_is_fallback_for_duration(player):
     player.mpd_client.listallinfo.return_value = [{'file': 'B/02.mp3', 'time': '61'}]
 
     assert player.list_all_songs() == [
-        {'file': 'B/02.mp3', 'title': '', 'artist': '', 'album': '', 'albumartist': '', 'duration': '61'},
+        {'file': 'B/02.mp3', 'title': '', 'artist': '', 'album': '', 'albumartist': '', 'duration': '61',
+         'modified': ''},
     ]
 
 
@@ -88,3 +90,4 @@ def test_folder_content_outside_library_is_refused(player, library, folder):
 
 def test_music_library_path_is_absolute(player, library):
     assert player.get_music_library_path() == str(library)
+

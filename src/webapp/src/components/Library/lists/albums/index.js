@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -10,13 +10,16 @@ import request from '../../../../utils/request';
 import { flatByAlbum } from '../../../../utils/utils';
 
 import AlbumList from "./album-list";
+import { albumDates, sortAlbums } from '../../sort';
 
-const Albums = ({ musicFilter }) => {
+const Albums = ({ musicFilter, sort }) => {
   const { t } = useTranslation();
 
   const [albums, setAlbums] = useState([]);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Date of each album (its newest song), only loaded for sorting by date
+  const [dates, setDates] = useState(null);
 
   const search = ({ albumartist, album }) => {
     if (musicFilter === '') return true;
@@ -40,12 +43,28 @@ const Albums = ({ musicFilter }) => {
     fetchAlbumList();
   }, []);
 
+  useEffect(() => {
+    if (sort !== 'recent' || dates) return;
+    let isMounted = true;
+    const fetchDates = async () => {
+      const { result } = await request('allSongsList');
+      if (isMounted) setDates(albumDates(result || []));
+    };
+    fetchDates();
+    return () => { isMounted = false; };
+  }, [sort, dates]);
+
+  const sortedAlbums = useMemo(
+    () => sortAlbums(albums, sort, dates || {}),
+    [albums, sort, dates]
+  );
+
   return (
     <>
-      {isLoading
+      {isLoading || (sort === 'recent' && !dates)
         ? <CircularProgress />
         : <AlbumList
-            albums={albums.filter(search)}
+            albums={sortedAlbums.filter(search)}
             musicFilter={musicFilter}
       />}
       {error &&

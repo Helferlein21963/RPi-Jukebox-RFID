@@ -90,3 +90,23 @@ def test_rewrite_paths_dry_run_only_counts(path_cards, monkeypatch):
 
     assert cards.rewrite_paths('/music/Conni', '/music/Conni', '/music', dry_run=True) == 4
     assert path_cards['folder']['args'] == ['/music/Conni', True]
+
+
+@pytest.mark.skipif(sys.platform.startswith('win'), reason='POSIX paths')
+def test_rewrite_paths_many_moves_each_card_once(cfg_cards, monkeypatch):
+    saved = []
+    monkeypatch.setattr(cfg_cards, 'save', lambda *args, **kwargs: saved.append(True))
+    cfg_cards.config_dict({
+        'a': {'alias': 'play_single', 'args': ['Maus/a.mp3']},
+        'b': {'alias': 'play_single', 'kwargs': {'song_url': '/music/Maus/b.mp3'}},
+        'folder': {'alias': 'play_folder', 'args': ['/music/Maus']},
+    })
+
+    # a and b swap their names
+    renames = [['/music/Maus/a.mp3', '/music/Maus/b.mp3'], ['/music/Maus/b.mp3', '/music/Maus/a.mp3']]
+    assert cards.rewrite_paths_many(renames, '/music') == 2
+
+    assert cfg_cards['a']['args'] == ['Maus/b.mp3']
+    assert cfg_cards['b']['kwargs'] == {'song_url': '/music/Maus/a.mp3'}
+    assert cfg_cards['folder']['args'] == ['/music/Maus']
+    assert saved == [True]

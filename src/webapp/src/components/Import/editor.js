@@ -201,7 +201,7 @@ const Editor = ({ info, targetFolder }) => {
       }
 
       <Grid item>
-        <TrackList tracks={tracks} setTracks={setTracks} />
+        <TrackList tracks={tracks} setTracks={setTracks} reorder={isReorder} />
       </Grid>
 
       {error &&

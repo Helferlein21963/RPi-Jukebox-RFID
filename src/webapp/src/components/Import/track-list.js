@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
+  Box,
   Button,
   Checkbox,
   Grid,
@@ -14,25 +15,36 @@ import {
 
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
+import AudioFileOutlinedIcon from '@mui/icons-material/AudioFileOutlined';
 
 import { toHHMMSS } from '../../utils/utils';
-import { formatDate, moveItem } from './utils';
+import { formatDate, moveItem, reorderNames } from './utils';
 
-// Files of an existing folder ('existing') are in the list when the order of the whole folder is set:
-// they can be moved, but not unselected or renamed
-const TrackList = ({ tracks, setTracks }) => {
+// Checkbox and file icon share this column, so that all titles start at the same position
+const LEAD_WIDTH = 40;
+
+// With 'reorder' (order of the whole existing folder) the files of the folder ('existing') are in the list:
+// they can be moved, but not unselected or renamed. Every row shows its file name after the import.
+const TrackList = ({ tracks, setTracks, reorder = false }) => {
   const { t, i18n } = useTranslation();
   const importable = tracks.filter((track) => !track.existing);
   const selectedCount = importable.filter((track) => track.selected).length;
+  const names = reorder ? reorderNames(tracks) : {};
 
-  // Date (podcast episodes) and duration below the title
+  // Below the title: existing/new, date (podcast episodes), duration and the new file name
   const details = (track) => {
-    if (track.existing) return t('import.editor.existing');
-    if (!track.available) return t('import.editor.unavailable');
-    return [formatDate(track.date, i18n?.language), track.duration ? toHHMMSS(track.duration) : null]
-      .filter(Boolean)
-      .join(' · ') || ' ';
+    if (!track.existing && !track.available) return t('import.editor.unavailable');
+    const parts = [];
+    if (reorder) parts.push(track.existing ? t('import.editor.existing') : t('import.editor.new'));
+    if (!track.existing) {
+      parts.push(formatDate(track.date, i18n?.language));
+      if (track.duration) parts.push(toHHMMSS(track.duration));
+    }
+    const text = parts.filter(Boolean).join(' · ');
+    if (!reorder) return text || ' ';
+    const name = names[track.key];
+    const target = name ? t('import.editor.becomes', { name }) : t('import.editor.skipped');
+    return `${text} ${target}`;
   };
 
   const updateTrack = (idx, values) => setTracks(
@@ -43,13 +55,19 @@ const TrackList = ({ tracks, setTracks }) => {
     tracks.map((track) => (track.existing ? track : { ...track, selected: selected && track.available }))
   );
 
+  const heading = reorder
+    ? t('import.editor.tracks-reorder', {
+      existing: tracks.length - importable.length,
+      selected: selectedCount,
+      total: importable.length,
+    })
+    : t('import.editor.tracks', { selected: selectedCount, total: importable.length });
+
   return (
     <>
       <Grid container alignItems="center">
         <Grid item xs>
-          <Typography variant="subtitle2">
-            {t('import.editor.tracks', { selected: selectedCount, total: importable.length })}
-          </Typography>
+          <Typography variant="subtitle2">{heading}</Typography>
         </Grid>
         <Grid item>
           <Button size="small" onClick={() => selectAll(true)}>
@@ -70,29 +88,39 @@ const TrackList = ({ tracks, setTracks }) => {
           <ListItem
             key={track.key}
             disableGutters
-            sx={{ alignItems: 'center', opacity: track.selected ? 1 : 0.5 }}
+            sx={{ alignItems: 'center', opacity: track.existing || track.selected ? 1 : 0.5 }}
           >
+            <Box sx={{ width: LEAD_WIDTH, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+              {track.existing
+                ? <AudioFileOutlinedIcon color="action" titleAccess={t('import.editor.existing')} />
+                : <Checkbox
+                    size="small"
+                    checked={track.selected}
+                    disabled={!track.available}
+                    onChange={(event) => updateTrack(idx, { selected: event.target.checked })}
+                    inputProps={{ 'aria-label': track.title }}
+                  />
+              }
+            </Box>
             {track.existing
-              ? <FolderOutlinedIcon fontSize="small" color="action" sx={{ marginX: 1.5, flexShrink: 0 }} />
-              : <Checkbox
-                  edge="start"
+              // A file of the folder: its name as it is, not editable
+              ? <Box sx={{ flexGrow: 1, minWidth: 0, paddingY: 0.5 }}>
+                  <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>{track.file}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+                    {details(track)}
+                  </Typography>
+                </Box>
+              : <TextField
+                  fullWidth
                   size="small"
-                  checked={track.selected}
+                  variant="standard"
+                  value={track.title}
                   disabled={!track.available}
-                  onChange={(event) => updateTrack(idx, { selected: event.target.checked })}
-                  inputProps={{ 'aria-label': track.title }}
+                  onChange={(event) => updateTrack(idx, { title: event.target.value })}
+                  helperText={details(track)}
+                  FormHelperTextProps={{ sx: { overflowWrap: 'anywhere' } }}
                 />
             }
-            <TextField
-              fullWidth
-              size="small"
-              variant="standard"
-              value={track.title}
-              disabled={!track.available}
-              InputProps={{ readOnly: !!track.existing }}
-              onChange={(event) => updateTrack(idx, { title: event.target.value })}
-              helperText={details(track)}
-            />
             <IconButton
               size="small"
               aria-label={t('import.editor.move-up')}

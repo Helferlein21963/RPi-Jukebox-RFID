@@ -7,11 +7,12 @@ import {
 } from 'react-router-dom';
 
 import LibraryLists from './lists';
+import { loadLastView } from './views';
 
 const Library = () => {
   const { search: urlSearch } = useLocation();
-  const lastListView =
-    `${localStorage.getItem('libraryLastListView') || 'albums'}${urlSearch}`;
+  // The library opens with the view chosen last
+  const lastListView = `${loadLastView()}${urlSearch}`;
 
   return (
     <Routes>

@@ -10,9 +10,11 @@ import {
 import request from '../../../../utils/request';
 import FolderList from "./folder-list";
 import { useMusicLibraryPath } from '../../now-playing';
+import { sortFolders } from '../../sort';
 
 const Folders = ({
   musicFilter,
+  sort,
   isSelecting,
   registerMusicToCard,
 }) => {
@@ -50,7 +52,8 @@ const Folders = ({
     fetchFolderList();
   }, [dir, reloadCount]);
 
-  const filteredFolders = folders.filter(search);
+  // Subfolders, then the songs, in the chosen order (A–Z: the songs as they are played)
+  const filteredFolders = sortFolders(folders.filter(search), sort);
 
   if (isLoading) return <CircularProgress />;
   if (error) return <Typography>{t('library.loading-error')}</Typography>;

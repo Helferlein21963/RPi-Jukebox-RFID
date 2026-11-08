@@ -839,7 +839,8 @@ class PlayerMPD:
         """
         Get the folder content as content list with meta-information. Depth is always 1.
 
-        Call repeatedly to descend in hierarchy
+        Call repeatedly to descend in hierarchy. Folders and files also have ``modified``: the modification time
+        (seconds since the epoch, None if unknown), e.g. to list recently added folders first.
 
         :param folder: Folder path relative to music library path (or absolute, as returned by this method)
         :raises ValueError: if the folder is outside of the music library
@@ -852,7 +853,105 @@ class PlayerMPD:
 
         plc = playlistgenerator.PlaylistCollector(components.player.get_music_library_path())
         plc.get_directory_content(folder)
+        for entry in plc.playlist:
+            entry['modified'] = None
+            if entry['type'] in ('directory', 'file'):
+                try:
+                    entry['modified'] = int(os.stat(entry['path']).st_mtime)
+                except OSError:
+                    pass
         return plc.playlist
+
+    def _order_files(self, folder: str) -> list:
+        """
+        Files of a folder in play order (names without path), for :meth:`get_order_info` and :meth:`reorder`
+
+        :param folder: Absolute path of the folder
+        :raises ValueError: if it is no folder, or a playlist / stream file sets its content
+        """
+        if not os.path.isdir(folder):
+            raise ValueError(f"'{os.path.basename(folder)}' is not a folder")
+        if any(library_edit.is_special_file(name) for name in os.listdir(folder)):
+            raise ValueError(f"The order of '{os.path.basename(folder)}' is set by a playlist or stream file")
+        plc = playlistgenerator.PlaylistCollector(self.get_music_library_path())
+        plc.get_directory_content(folder)
+        return [os.path.basename(entry['path']) for entry in plc.playlist if entry['type'] == 'file']
+
+    @plugs.tag
+    def get_order_info(self, folder: str) -> list:
+        """
+        The songs of a folder in play order, to change the order (see :meth:`reorder`)
+
+        :param folder: Absolute path, or relative to the music library
+        :return: ``[{'file': name, 'title': title tag, 'track': track number tag or None,
+            'modified': seconds since the epoch}]``
+        :raises ValueError: if the folder is outside of the library, or a playlist / stream file sets its content
+        """
+        library = self.get_music_library_path()
+        target = library_edit.resolve_in_library(library, folder)
+        files = self._order_files(target)
+        with self.mpd_lock:
+            entries = self.mpd_retry_with_mutex(self.mpd_client.lsinfo, os.path.relpath(target, library)) or []
+        tags = {os.path.basename(entry['file']): entry for entry in entries if 'file' in entry}
+
+        def first(value):
+            # Repeated tags come as a list
+            return value[0] if isinstance(value, list) else value
+
+        songs = []
+        for name in files:
+            entry = tags.get(name, {})
+            track = str(first(entry.get('track', '')) or '').split('/')[0].strip()
+            songs.append({
+                'file': name,
+                'title': first(entry.get('title', '')) or '',
+                'track': int(track) if track.isdigit() else None,
+                'modified': int(os.stat(os.path.join(target, name)).st_mtime),
+            })
+        return songs
+
+    @plugs.tag
+    def reorder(self, folder: str, files: list) -> list:
+        """
+        Change the order of a folder: its files are renamed to ``01 - Title.mp3``, ``02 - ...`` in the given order
+        (the old leading numbers are dropped) and get the track number tag, if mutagen is installed.
+
+        Cards and remembered positions of the songs are adapted, the MPD database is updated in the background.
+
+        :param folder: Absolute path, or relative to the music library
+        :param files: All files of the folder (names without path) in the new order
+        :return: The new file names in this order
+        :raises ValueError: if ``files`` are not exactly the files of the folder, or the folder is being played
+        """
+        library = self.get_music_library_path()
+        target = library_edit.resolve_in_library(library, folder)
+        current = self._order_files(target)
+        if len(set(files)) != len(files) or sorted(files) != sorted(current):
+            raise ValueError('The files of the folder have changed. Load the folder again.')
+
+        names = library_edit.reorder_names(files)
+        renames = [(os.path.join(target, old), os.path.join(target, new))
+                   for old, new in zip(files, names) if old != new]
+        with self.mpd_lock:
+            # Songs of the folder in the queue: like renaming, only while stopped
+            queued = [song for song in self.mpd_client.playlistinfo()
+                      if library_edit.rewrite_path(song.get('file'), target, target, library) is not None]
+            if queued:
+                if self.mpd_client.status().get('state') in ('play', 'pause'):
+                    raise ValueError(f"'{os.path.basename(target)}' is being played. Stop the playback first.")
+                self.mpd_client.clear()
+
+            library_edit.rename_files(target, list(zip(files, names)))
+            logger.info(f"Order of '{target}' changed: {len(renames)} files renamed")
+            for number, name in enumerate(names, start=1):
+                library_edit.set_track_number(os.path.join(target, name), number, len(names))
+            if renames:
+                self._rename_in_status(lambda value: library_edit.rewrite_path_many(value, renames, library))
+
+        if renames:
+            plugs.call_ignore_errors('cards', 'rewrite_paths_many', args=[[list(pair) for pair in renames], library])
+        self.update()
+        return names
 
     @plugs.tag
     def get_rename_info(self, path: str) -> dict:
@@ -1110,8 +1209,9 @@ class PlayerMPD:
         """
         List all songs of the MPD database, sorted by title
 
-        Each song is reduced to ``file``, ``title``, ``artist``, ``album``, ``albumartist`` and ``duration``
-        (missing tags are empty strings). Songs without a title are sorted by their file name.
+        Each song is reduced to ``file``, ``title``, ``artist``, ``album``, ``albumartist``, ``duration`` and
+        ``modified`` (date of the file, ISO 8601 in UTC; missing tags are empty strings).
+        Songs without a title are sorted by their file name.
 
         :raises RuntimeError: if the MPD database could not be read
         """
@@ -1129,6 +1229,7 @@ class PlayerMPD:
                 'album': entry.get('album', ''),
                 'albumartist': entry.get('albumartist', ''),
                 'duration': entry.get('duration', entry.get('time', '')),
+                'modified': entry.get('last-modified', ''),
             }
             for entry in entries if 'file' in entry
         ]

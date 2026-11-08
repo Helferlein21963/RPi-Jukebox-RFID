@@ -156,6 +156,39 @@ def _path_argument(card_action):
     return _PATH_ARGUMENTS.get(method) if package == 'player' else None
 
 
+def _rewrite_card_paths(moved, dry_run: bool) -> int:
+    """Rewrite the path argument of every card with ``moved(path)`` (None: not affected); see :func:`rewrite_paths`"""
+    changed = 0
+    with cfg_cards:
+        for card_id, card_action in cfg_cards.items():
+            key = _path_argument(card_action) if isinstance(card_action, dict) else None
+            if key is None:
+                continue
+            args = card_action.get('args')
+            kwargs = card_action.get('kwargs')
+            new_args = new_kwarg = None
+            if isinstance(args, list) and args:
+                new_args = moved(args[0])
+            if isinstance(kwargs, dict):
+                new_kwarg = moved(kwargs.get(key))
+            if new_args is None and new_kwarg is None:
+                continue
+            changed += 1
+            if dry_run:
+                continue
+            if new_args is not None:
+                log.info(f"Card '{card_id}': '{args[0]}' renamed to '{new_args}'")
+                card_action['args'] = [new_args, *args[1:]]
+            if new_kwarg is not None:
+                log.info(f"Card '{card_id}': '{kwargs.get(key)}' renamed to '{new_kwarg}'")
+                card_action['kwargs'] = {**kwargs, key: new_kwarg}
+        if changed and not dry_run:
+            cfg_cards.save()
+    if changed and not dry_run:
+        publishing.get_publisher().send(f'{plugs.loaded_as(__name__)}.database.has_changed', time.ctime())
+    return changed
+
+
 @plugs.register
 def rewrite_paths(old: str, new: str, library: str, dry_run: bool = False) -> int:
     """Adapt the cards after a folder or song of the music library was renamed
@@ -169,34 +202,20 @@ def rewrite_paths(old: str, new: str, library: str, dry_run: bool = False) -> in
     :param dry_run: Only count the affected cards
     :return: Number of affected cards
     """
-    changed = 0
-    with cfg_cards:
-        for card_id, card_action in cfg_cards.items():
-            key = _path_argument(card_action) if isinstance(card_action, dict) else None
-            if key is None:
-                continue
-            args = card_action.get('args')
-            kwargs = card_action.get('kwargs')
-            new_args = new_kwarg = None
-            if isinstance(args, list) and args:
-                new_args = library_edit.rewrite_path(args[0], old, new, library)
-            if isinstance(kwargs, dict):
-                new_kwarg = library_edit.rewrite_path(kwargs.get(key), old, new, library)
-            if new_args is None and new_kwarg is None:
-                continue
-            changed += 1
-            if dry_run:
-                continue
-            if new_args is not None:
-                card_action['args'] = [new_args, *args[1:]]
-            if new_kwarg is not None:
-                card_action['kwargs'] = {**kwargs, key: new_kwarg}
-            log.info(f"Card '{card_id}': '{old}' renamed to '{new}'")
-        if changed and not dry_run:
-            cfg_cards.save()
-    if changed and not dry_run:
-        publishing.get_publisher().send(f'{plugs.loaded_as(__name__)}.database.has_changed', time.ctime())
-    return changed
+    return _rewrite_card_paths(lambda value: library_edit.rewrite_path(value, old, new, library), dry_run)
+
+
+@plugs.register
+def rewrite_paths_many(renames: List[List[str]], library: str) -> int:
+    """Adapt the cards after several songs were renamed at once (e.g. when the order of a folder was changed)
+
+    Like :func:`rewrite_paths`, but songs may swap their names.
+
+    :param renames: ``[old, new]`` absolute paths
+    :param library: Absolute path of the music library
+    :return: Number of affected cards
+    """
+    return _rewrite_card_paths(lambda value: library_edit.rewrite_path_many(value, renames, library), False)
 
 
 @plugs.register

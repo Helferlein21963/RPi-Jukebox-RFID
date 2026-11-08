@@ -21,5 +21,32 @@ Good to know:
   right away.
 * The library folder itself can't be renamed.
 
-For developers: the RPCs are `player.ctrl.get_rename_info(path)` and `player.ctrl.rename(path, new_name, title)`;
-cards are adapted by `cards.rewrite_paths`.
+## Order of a folder
+
+The box plays a folder in the alphabetical order of its file names. To change it, open the folder in
+**Library → Folders** and tap the arrows button next to the pencil (shown with two songs or more):
+
+* **Sort** puts the songs in order at once: by name (A–Z, Z–A, ignoring a leading number), by the
+  **track number** tag, or by the date of the file (**newest** / **oldest** first, e.g. podcast episodes in the
+  order they were added).
+* Then move single songs with the arrows. Every line shows the name the file will get.
+* **Save** renames the files to `01 - Title.mp3`, `02 - …` in this order and sets their track number tag
+  (if `mutagen` is installed). The title and the date of the files stay.
+
+Cards playing one of the songs and the remembered position are adapted, but the folder starts again with its first
+song. Like renaming, this is not possible while the folder is playing or paused. Folders whose content is set by a
+playlist (`.m3u`) or a `livestream.txt` / `podcast.txt` can't be reordered.
+
+## Sorting and view
+
+The button next to the search sorts the list of the library: by name (A–Z, Z–A), by artist (albums and songs) or
+**recently added** first. In a folder, the subfolders come first, then the songs. For the songs, A–Z is the order
+they are played in; Z–A and *recently added* only change the list, not the play order (use *Order of a folder* for
+that). The library opens with the view (*Folders*, *Albums*, *Songs*) and the sorting chosen last; both are kept in
+the browser.
+
+## For developers
+
+The RPCs are `player.ctrl.get_rename_info(path)`, `player.ctrl.rename(path, new_name, title)`,
+`player.ctrl.get_order_info(folder)` and `player.ctrl.reorder(folder, files)`; cards are adapted by
+`cards.rewrite_paths` / `cards.rewrite_paths_many`. File helpers are in `jukebox.library_edit`.

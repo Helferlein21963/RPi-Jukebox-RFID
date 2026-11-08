@@ -55,6 +55,18 @@ const commands = {
     plugin: 'ctrl',
     method: 'rename',
   },
+  getOrderInfo: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'get_order_info',
+    argKeys: ['folder'],
+  },
+  reorderFolder: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'reorder',
+    argKeys: ['folder', 'files'],
+  },
   cardsList: {
     _package: 'cards',
     plugin: 'list_cards',

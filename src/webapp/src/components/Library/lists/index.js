@@ -20,6 +20,7 @@ import LibraryHeader from "../library-header";
 import SelectorHeader from "../selector-header";
 
 import { buildActionData } from '../../Cards/utils';
+import { loadSorts, saveSorts, sortOf } from '../sort';
 
 const LibraryLists = () => {
   const navigate = useNavigate();
@@ -28,6 +29,14 @@ const LibraryLists = () => {
   const [isSelecting] = useState(searchParams.get('isSelecting'));
   const [cardId] = useState(searchParams.get('cardId'));
   const [musicFilter, setMusicFilter] = useState('');
+  // Chosen sort of each view, kept in the browser
+  const [sorts, setSorts] = useState(loadSorts);
+
+  const changeSort = (view, sort) => {
+    const changed = { ...sorts, [view]: sort };
+    setSorts(changed);
+    saveSorts(changed);
+  };
 
   const registerMusicToCard = (command, args) => {
     const actionData = buildActionData('play_music', command, args);
@@ -48,6 +57,8 @@ const LibraryLists = () => {
         <LibraryHeader
           musicFilter={musicFilter}
           setMusicFilter={setMusicFilter}
+          sorts={sorts}
+          onSortChange={changeSort}
         />
         <Grid
           container
@@ -60,7 +71,7 @@ const LibraryLists = () => {
           <Routes>
             <Route
               path="albums"
-              element={<Albums musicFilter={musicFilter} />}
+              element={<Albums musicFilter={musicFilter} sort={sortOf(sorts, 'albums')} />}
               exact
             />
             <Route
@@ -78,6 +89,7 @@ const LibraryLists = () => {
               element={
                 <Songs
                   musicFilter={musicFilter}
+                  sort={sortOf(sorts, 'songs')}
                   isSelecting={isSelecting}
                   registerMusicToCard={registerMusicToCard}
                 />
@@ -93,6 +105,7 @@ const LibraryLists = () => {
               element={
                 <Folders
                   musicFilter={musicFilter}
+                  sort={sortOf(sorts, 'folders')}
                   isSelecting={isSelecting}
                   registerMusicToCard={registerMusicToCard}
                 />

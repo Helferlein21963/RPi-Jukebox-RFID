@@ -11,10 +11,12 @@ import {
 } from '@mui/material';
 
 import EditIcon from '@mui/icons-material/Edit';
+import SwapVertIcon from '@mui/icons-material/SwapVert';
 
 import FolderListItem from './folder-list-item';
 import FolderListItemBack from './folder-list-item-back';
 import RenameDialog from '../../dialogs/rename';
+import ReorderDialog from '../../dialogs/reorder';
 import {
   isFolderPlaying,
   isSongPlaying,
@@ -40,6 +42,7 @@ const FolderList = ({
   const nowPlaying = useNowPlaying();
   // Path of the folder or song being renamed
   const [renamePath, setRenamePath] = useState(undefined);
+  const [isReordering, setIsReordering] = useState(false);
   const decodedDir = decodeURIComponent(dir);
   // The backend returns absolute paths, so the library root has two names: './' and its absolute path
   // TODO: ROOT_DIRS should be removed after paths are relative
@@ -53,6 +56,8 @@ const FolderList = ({
   }
 
   const parentDir = getParentDir();
+  // The order only matters with two songs or more
+  const canReorder = folders.filter(({ type }) => type === 'file').length > 1;
 
   const playFolder = () => request('play_folder', { folder: decodedDir, recursive: true });
 
@@ -91,6 +96,15 @@ const FolderList = ({
           >
             <EditIcon />
           </IconButton>
+          {canReorder &&
+            <IconButton
+              onClick={() => setIsReordering(true)}
+              aria-label={t('library.reorder.button')}
+              title={t('library.reorder.button')}
+            >
+              <SwapVertIcon />
+            </IconButton>
+          }
           <PlayButton
             isCurrent={isFolderCurrent}
             isPlaying={isFolderCurrent && nowPlaying.isPlaying}
@@ -123,6 +137,17 @@ const FolderList = ({
           );
         })}
       </List>
+      {isReordering &&
+        <ReorderDialog
+          open
+          folder={decodedDir}
+          onClose={() => setIsReordering(false)}
+          onSaved={() => {
+            setIsReordering(false);
+            onChanged();
+          }}
+        />
+      }
       {renamePath &&
         <RenameDialog
           open

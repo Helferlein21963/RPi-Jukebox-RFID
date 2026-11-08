@@ -9,29 +9,44 @@ import { useTranslation } from 'react-i18next';
 import {
   Grid,
   IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
 } from "@mui/material";
 
+import CheckIcon from '@mui/icons-material/Check';
 import SearchIcon from '@mui/icons-material/Search';
+import SortIcon from '@mui/icons-material/Sort';
 
-const VIEWS = ['albums', 'folders', 'songs'];
+import { saveLastView, VIEWS } from './views';
+import { sortOf, SORTS } from './sort';
 
-const LibraryHeader = ({ musicFilter, setMusicFilter }) => {
+const LibraryHeader = ({ musicFilter, setMusicFilter, sorts, onSortChange }) => {
   const { search: urlSearch } = useLocation();
   const navigate = useNavigate();
   const { '*': view } = useParams();
   const { t } = useTranslation();
   const [showSearchInput, setShowSearchInput] = useState(false);
+  // Element the sort menu opens at
+  const [sortAnchor, setSortAnchor] = useState(null);
 
-  const currentView = VIEWS.find(name => view.startsWith(name)) || 'albums';
+  const currentView = VIEWS.find(name => view.startsWith(name)) || VIEWS[0];
+  const currentSort = sortOf(sorts, currentView);
 
   const changeView = (event, path) => {
     // Clicking the active button deselects it: keep the current view then
     if (!path || path === currentView) return;
-    localStorage.setItem('libraryLastListView', path);
+    saveLastView(path);
     navigate(`${path}${urlSearch}`);
+  };
+
+  const chooseSort = (sort) => {
+    setSortAnchor(null);
+    onSortChange?.(currentView, sort);
   };
 
   const toggleSearchInput = () => {
@@ -71,6 +86,31 @@ const LibraryHeader = ({ musicFilter, setMusicFilter }) => {
               width: '100%',
             }}
           />
+        }
+        {!showSearchInput && onSortChange &&
+          <>
+            <IconButton
+              aria-label={t('library.header.sort-label')}
+              title={t('library.header.sort-label')}
+              onClick={(event) => setSortAnchor(event.currentTarget)}
+              color={currentSort !== SORTS[currentView][0] ? 'primary' : undefined}
+              sx={{ marginRight: 'auto' }}
+            >
+              <SortIcon />
+            </IconButton>
+            <Menu
+              anchorEl={sortAnchor}
+              open={!!sortAnchor}
+              onClose={() => setSortAnchor(null)}
+            >
+              {SORTS[currentView].map((sort) => (
+                <MenuItem key={sort} selected={sort === currentSort} onClick={() => chooseSort(sort)}>
+                  <ListItemIcon>{sort === currentSort && <CheckIcon fontSize="small" />}</ListItemIcon>
+                  <ListItemText>{t(`library.header.sort.${sort}`)}</ListItemText>
+                </MenuItem>
+              ))}
+            </Menu>
+          </>
         }
         {!showSearchInput &&
           <ToggleButtonGroup

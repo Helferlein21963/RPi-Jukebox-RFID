@@ -12,6 +12,9 @@ from typing import List, Optional, Tuple
 
 from slugify import slugify
 
+# Shared with renaming and reordering in the library
+from jukebox.library_edit import NUMBER_RE, strip_number, track_number  # noqa: F401
+
 #: Umlauts are written out (e.g. ``Max_uebernachtet_bei_Oma``)
 #: instead of being reduced to the bare vowel
 UMLAUT_REPLACEMENTS = [
@@ -63,22 +66,6 @@ def track_filename(number: int, title: str, width: int = 2, extension: str = '.m
     return f'{number:0{width}d} - {safe_filename(title)}{extension}'
 
 
-_NUMBER_RE = re.compile(r'^(\d+)')
-_NUMBER_PREFIX_RE = re.compile(r'^\d+(?:\s*[-_.)]+\s*|\s+)')
-
-
-def track_number(filename: str) -> Optional[int]:
-    """The number a file name starts with (``07 - Title.mp3`` → 7), None if it has none"""
-    match = _NUMBER_RE.match(filename)
-    return int(match.group(1)) if match else None
-
-
-def strip_number(stem: str) -> str:
-    """Title part of a file name without its leading number: ``07 - Title`` → ``Title``"""
-    stripped = _NUMBER_PREFIX_RE.sub('', stem, count=1).strip()
-    return stripped or stem
-
-
 def _unique_name(name: str, taken: set) -> str:
     """``name``, or ``name (2)``, ``name (3)`` ... if it is taken already (case-insensitive)"""
     stem, extension = os.path.splitext(name)
@@ -110,7 +97,7 @@ def plan_append_names(existing_files: List[str], titles: List[str]) -> Tuple[Lis
     if not numbered:
         return [_unique_name(f'{safe_filename(title)}.mp3', taken) for title in titles], False
 
-    widths = [len(_NUMBER_RE.match(name).group(1)) for name in existing_files]
+    widths = [len(NUMBER_RE.match(name).group(1)) for name in existing_files]
     first = max(numbers, default=0) + 1
     width = max([2, len(str(first + len(titles) - 1))] + widths)
     names = [_unique_name(track_filename(first + idx, title, width), taken) for idx, title in enumerate(titles)]

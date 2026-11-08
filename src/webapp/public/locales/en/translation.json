@@ -162,13 +162,21 @@
       "start": "Import ({{count}})",
       "folder-new": "New folder: {{folder}}",
       "folder-create": "New folder \"{{folder}}\"",
-      "folder-tracks": "{{count}} tracks",
-      "folder-existing-append": "Existing folder with {{count}} tracks – new tracks are added at the end",
-      "folder-existing-sorted": "Existing folder with {{count}} tracks – new tracks are sorted in alphabetically",
-      "folder-existing-reorder": "Existing folder with {{count}} tracks – set the order below",
+      "folder-tracks_one": "{{count}} track",
+      "folder-tracks_other": "{{count}} tracks",
+      "folder-existing-append_one": "Existing folder with {{count}} track – new tracks are added at the end",
+      "folder-existing-append_other": "Existing folder with {{count}} tracks – new tracks are added at the end",
+      "folder-existing-sorted_one": "Existing folder with {{count}} track – new tracks are sorted in alphabetically",
+      "folder-existing-sorted_other": "Existing folder with {{count}} tracks – new tracks are sorted in alphabetically",
+      "folder-existing-reorder_one": "Existing folder with {{count}} track – set the order below",
+      "folder-existing-reorder_other": "Existing folder with {{count}} tracks – set the order below",
       "reorder": "Set the order myself",
       "reorder-hint": "All files of the folder are renamed in this order (01 - …, 02 - …). The folder then starts again with the first track.",
-      "existing": "Already in the folder"
+      "tracks-reorder": "Order in the folder · {{existing}} existing, {{selected}} of {{total}} new selected",
+      "existing": "Already in the folder",
+      "new": "New",
+      "becomes": "→ {{name}}",
+      "skipped": "→ not imported"
     },
     "progress": {
       "title": "Importing into {{folder}}",
@@ -211,6 +219,13 @@
       "search-show": "Show search",
       "search-label": "Search",
       "toggle-label": "Choose view",
+      "sort-label": "Sort",
+      "sort": {
+        "name-asc": "Name A–Z",
+        "name-desc": "Name Z–A",
+        "artist": "Artist",
+        "recent": "Recently added"
+      },
       "albums": "Albums",
       "folders": "Folders",
       "songs": "Songs"
@@ -254,6 +269,29 @@
         "playing": "This is being played. Please stop the playback first.",
         "invalid-name": "Please enter a valid name.",
         "unknown": "Renaming failed."
+      }
+    },
+    "reorder": {
+      "button": "Change the order",
+      "title": "Order of {{folder}}",
+      "sort-by": "Sort:",
+      "sort": {
+        "name-asc": "A–Z",
+        "name-desc": "Z–A",
+        "track": "Track number",
+        "newest": "Newest",
+        "oldest": "Oldest"
+      },
+      "becomes": "→ {{name}}",
+      "unchanged": "Name stays",
+      "move-up": "Move up",
+      "move-down": "Move down",
+      "drag": "Drag to move",
+      "hint": "Saving renames the files in this order (01 - …, 02 - …), as the box plays a folder in the order of its file names. Cards are adapted, the folder then starts again with the first track.",
+      "errors": {
+        "special": "The order of this folder is set by a playlist or stream file.",
+        "changed": "The files of the folder have changed. Please open the dialog again.",
+        "unknown": "The order could not be changed."
       }
     }
   },

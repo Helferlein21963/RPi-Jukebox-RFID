@@ -144,12 +144,18 @@ test('sets the order of the whole existing folder', async () => {
   render(<Editor info={info} targetFolder="Max_Hoerspiele" />);
 
   fireEvent.click(await screen.findByLabelText('import.editor.reorder'));
-  expect(screen.getByDisplayValue('Alt')).toBeInTheDocument();
+  // The file of the folder with its name, not as an editable title
+  expect(screen.getByText('Alt.mp3')).toBeInTheDocument();
+  expect(screen.queryByDisplayValue('Alt')).not.toBeInTheDocument();
   expect(screen.getByText('import.editor.reorder-hint')).toBeInTheDocument();
+  // Every row shows its file name after the import
+  expect(screen.getByText(/"name":"01 - Alt\.mp3"/)).toBeInTheDocument();
+  expect(screen.getByText(/"name":"03 - Teil 2\.mp3"/)).toBeInTheDocument();
   // Only the new tracks count
   expect(startButton()).toHaveTextContent('{"count":2}');
   // The old file down, after the first new track
   fireEvent.click(screen.getAllByRole('button', { name: 'import.editor.move-down' })[0]);
+  expect(screen.getByText(/"name":"02 - Alt\.mp3"/)).toBeInTheDocument();
   fireEvent.click(startButton());
 
   await waitFor(() => expect(request).toHaveBeenCalledWith('ytimportStart', expect.objectContaining({

@@ -73,6 +73,50 @@ const toImportTracks = (tracks, reorder = false) => (
     ))
 );
 
+// File names as the core makes them (preview only, the core decides):
+// same rules as safe_filename / strip_number / plan_reorder_names in components/ytimport/utils.py
+const FILENAME_MAX_LENGTH = 100;
+
+const trimChars = (text, chars) => {
+  let start = 0;
+  let end = text.length;
+  while (start < end && chars.includes(text[start])) start += 1;
+  while (end > start && chars.includes(text[end - 1])) end -= 1;
+  return text.slice(start, end);
+};
+
+const safeFilename = (title) => {
+  // eslint-disable-next-line no-control-regex
+  let name = String(title ?? '').replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ');
+  name = trimChars(name.replace(/\s+/g, ' '), ' .');
+  // Characters, not UTF-16 units, like Python
+  name = trimChars(Array.from(name).slice(0, FILENAME_MAX_LENGTH).join(''), ' .');
+  return name || 'Track';
+};
+
+const stripNumber = (stem) => stem.replace(/^\d+(?:\s*[-_.)]+\s*|\s+)/, '').trim() || stem;
+
+const splitExtension = (file) => {
+  const dot = file.lastIndexOf('.');
+  return dot > 0 ? [file.slice(0, dot), file.slice(dot)] : [file, ''];
+};
+
+// New file names when the order of the whole folder is set: {key: '01 - Title.mp3'}.
+// Deselected new tracks are not imported and get no name
+const reorderNames = (tracks) => {
+  const items = tracks.filter((track) => track.existing || track.selected);
+  const width = Math.max(2, String(items.length).length);
+  return Object.fromEntries(items.map((track, idx) => {
+    let [title, extension] = [track.title, '.mp3'];
+    if (track.existing) {
+      const [stem, ext] = splitExtension(track.file);
+      [title, extension] = [stripNumber(stem), ext];
+    }
+    const number = String(idx + 1).padStart(width, '0');
+    return [track.key, `${number} - ${safeFilename(title)}${extension}`];
+  }));
+};
+
 const moveItem = (list, from, to) => {
   if (to < 0 || to >= list.length) return list;
   const result = [...list];
@@ -89,5 +133,8 @@ export {
   mergeTracks,
   moveItem,
   newTracks,
+  reorderNames,
+  safeFilename,
+  stripNumber,
   toImportTracks,
 };

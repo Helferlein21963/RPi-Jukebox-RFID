@@ -163,12 +163,19 @@
       "folder-new": "Neuer Ordner: {{folder}}",
       "folder-create": "Neuer Ordner „{{folder}}“",
       "folder-tracks": "{{count}} Titel",
-      "folder-existing-append": "Bestehender Ordner mit {{count}} Titeln – neue Titel kommen ans Ende",
-      "folder-existing-sorted": "Bestehender Ordner mit {{count}} Titeln – neue Titel werden alphabetisch einsortiert",
-      "folder-existing-reorder": "Bestehender Ordner mit {{count}} Titeln – Reihenfolge unten festlegen",
+      "folder-existing-append_one": "Bestehender Ordner mit {{count}} Titel – neue Titel kommen ans Ende",
+      "folder-existing-append_other": "Bestehender Ordner mit {{count}} Titeln – neue Titel kommen ans Ende",
+      "folder-existing-sorted_one": "Bestehender Ordner mit {{count}} Titel – neue Titel werden alphabetisch einsortiert",
+      "folder-existing-sorted_other": "Bestehender Ordner mit {{count}} Titeln – neue Titel werden alphabetisch einsortiert",
+      "folder-existing-reorder_one": "Bestehender Ordner mit {{count}} Titel – Reihenfolge unten festlegen",
+      "folder-existing-reorder_other": "Bestehender Ordner mit {{count}} Titeln – Reihenfolge unten festlegen",
       "reorder": "Reihenfolge selbst festlegen",
       "reorder-hint": "Alle Dateien des Ordners werden in dieser Reihenfolge neu benannt (01 - …, 02 - …). Der Ordner beginnt danach wieder beim ersten Titel.",
-      "existing": "Schon im Ordner"
+      "tracks-reorder": "Reihenfolge im Ordner · {{existing}} vorhanden, {{selected}} von {{total}} neuen ausgewählt",
+      "existing": "Schon im Ordner",
+      "new": "Neu",
+      "becomes": "→ {{name}}",
+      "skipped": "→ wird nicht importiert"
     },
     "progress": {
       "title": "Importiere nach {{folder}}",
@@ -211,6 +218,13 @@
       "search-show": "Suche einblenden",
       "search-label": "Suche",
       "toggle-label": "Ansicht wählen",
+      "sort-label": "Sortieren",
+      "sort": {
+        "name-asc": "Name A–Z",
+        "name-desc": "Name Z–A",
+        "artist": "Interpret",
+        "recent": "Zuletzt hinzugefügt"
+      },
       "albums": "Alben",
       "folders": "Ordner",
       "songs": "Titel"
@@ -254,6 +268,29 @@
         "playing": "Wird gerade abgespielt. Bitte zuerst die Wiedergabe stoppen.",
         "invalid-name": "Bitte einen gültigen Namen eingeben.",
         "unknown": "Umbenennen fehlgeschlagen."
+      }
+    },
+    "reorder": {
+      "button": "Reihenfolge ändern",
+      "title": "Reihenfolge von {{folder}}",
+      "sort-by": "Sortieren:",
+      "sort": {
+        "name-asc": "A–Z",
+        "name-desc": "Z–A",
+        "track": "Tracknummer",
+        "newest": "Neueste",
+        "oldest": "Älteste"
+      },
+      "becomes": "→ {{name}}",
+      "unchanged": "Name bleibt",
+      "move-up": "Nach oben",
+      "move-down": "Nach unten",
+      "drag": "Ziehen zum Verschieben",
+      "hint": "Beim Speichern werden die Dateien in dieser Reihenfolge umbenannt (01 - …, 02 - …), denn die Box spielt einen Ordner nach den Dateinamen ab. Karten werden angepasst, der Ordner beginnt danach wieder beim ersten Titel.",
+      "errors": {
+        "special": "Die Reihenfolge dieses Ordners legt eine Playlist- oder Stream-Datei fest.",
+        "changed": "Die Dateien im Ordner haben sich geändert. Bitte den Dialog neu öffnen.",
+        "unknown": "Die Reihenfolge konnte nicht geändert werden."
       }
     }
   },

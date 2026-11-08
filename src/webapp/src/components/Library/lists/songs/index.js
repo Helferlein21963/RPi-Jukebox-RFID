@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -12,12 +12,14 @@ import request from '../../../../utils/request';
 
 import SongListItem from './song-list-item';
 import { isSongPlaying, useNowPlaying } from '../../now-playing';
+import { sortSongs } from '../../sort';
 
 // Thousands of list items make the page sluggish on phones: render in pages
 const PAGE_SIZE = 200;
 
 const Songs = ({
   musicFilter,
+  sort,
   isSelecting,
   registerMusicToCard,
 }) => {
@@ -44,7 +46,9 @@ const Songs = ({
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [musicFilter]);
+  }, [musicFilter, sort]);
+
+  const sortedSongs = useMemo(() => sortSongs(songs, sort), [songs, sort]);
 
   const search = ({ title, artist, album, file }) => {
     if (musicFilter === '') return true;
@@ -59,7 +63,7 @@ const Songs = ({
   if (isLoading) return <CircularProgress />;
   if (error) return <Typography>{t('library.loading-error')}</Typography>;
 
-  const filteredSongs = songs.filter(search);
+  const filteredSongs = sortedSongs.filter(search);
 
   if (!filteredSongs.length) {
     if (musicFilter) return <Typography>{`☝️  ${t('library.songs.no-music')}`}</Typography>;

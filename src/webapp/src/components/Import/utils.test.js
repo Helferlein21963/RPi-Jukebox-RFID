@@ -5,6 +5,9 @@ import {
   isBusy,
   mergeTracks,
   moveItem,
+  reorderNames,
+  safeFilename,
+  stripNumber,
   toImportTracks,
 } from './utils';
 
@@ -81,6 +84,32 @@ describe('import track list', () => {
     expect(toImportTracks(reordered)).toEqual([{ url: 'https://y/1', title: 'A', start: null, end: null }]);
     // Merging again does not add the files twice
     expect(mergeTracks([{ file: '01 - Alt.mp3', title: 'Alt' }], tracks)).toHaveLength(3);
+  });
+
+  test('file names like the core makes them', () => {
+    expect(safeFilename('In der Hocke | Die Maus: Teil 1?')).toBe('In der Hocke Die Maus Teil 1');
+    expect(safeFilename(' ..Ende.. ')).toBe('Ende');
+    expect(safeFilename('???')).toBe('Track');
+    expect(safeFilename('ä'.repeat(120))).toHaveLength(100);
+    expect(stripNumber('07 - Alt')).toBe('Alt');
+    expect(stripNumber('07_Alt')).toBe('Alt');
+    expect(stripNumber('Alt 2')).toBe('Alt 2');
+    expect(stripNumber('2024')).toBe('2024');
+  });
+
+  test('the new names of the whole folder when the order is set', () => {
+    const tracks = mergeTracks(
+      [{ file: '07 - Alt.ogg', title: 'Alt' }, { file: 'Aufsteigen.mp3', title: 'Aufsteigen' }],
+      buildTracks(playlist, false),
+    );
+    const names = reorderNames(moveItem(tracks, 2, 0));
+    expect(names).toEqual({
+      0: '01 - A.mp3',
+      'file:07 - Alt.ogg': '02 - Alt.ogg',
+      'file:Aufsteigen.mp3': '03 - Aufsteigen.mp3',
+    });
+    // The deselected track gets no name
+    expect(names[1]).toBeUndefined();
   });
 
   test('formatDate', () => {
