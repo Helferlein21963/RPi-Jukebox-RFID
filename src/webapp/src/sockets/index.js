@@ -43,47 +43,59 @@ const initSockets = ({ setState, events }) => {
   socketEvents({ setState, events });
 };
 
-const socketRequest = (_package, plugin, method, kwargs) => (
-  new Promise((resolve, reject) => {
-    const requestId = uuidv4();
+// Requests without answer fail after this time, e.g. if the core restarted meanwhile
+const REQUEST_TIMEOUT_MS = 60000;
 
-    socketRequest.server = new zmq.Req();
+// Requests waiting for their answer: id -> { resolve, reject, timer }
+const pendingRequests = new Map();
 
-    socketRequest.server.on('message', (msg) => {
-      const { id, error, result } = decodeMessage(msg);
+// All requests share one connection (a new one per request would pile up open WebSockets in the
+// browser and slow down pages with many requests). A Dealer, unlike Req, may send further requests
+// before the answer came; the core's REP socket answers them one after the other. jszmq reconnects
+// by itself and keeps requests until connected.
+let socket_req;
 
-      if (error && error.message) {
-        return reject(error.message);
-      }
+const handleAnswer = (delimiter, msg) => {
+  const { id, error, result } = decodeMessage(msg);
+  const pending = pendingRequests.get(id);
+  // Unknown ID: e.g. the answer came after the timeout
+  if (!pending) return;
 
-      // This implementation of Req Sockets is not ideal for parallel
-      // requests. In case 2 requests are launched at the same time
-      // both connect to the socket. The first one to return would
-      // close the channel which cancels the second request without
-      // allowing to receive the data. Not closing the channel
-      // here is not ideal, but it's not harmful either.
-      // Ideally, we outsouce `socketRequest.server` similar to
-      // `socket_sub`
-      // socketRequest.server.close();
+  pendingRequests.delete(id);
+  clearTimeout(pending.timer);
 
-      if (id && id === requestId) {
-        return resolve(result);
-      }
-      else {
-        return reject('Received socket message ID does not match sender ID.');
-      }
-    });
+  if (error && error.message) {
+    pending.reject(error.message);
+  }
+  else {
+    pending.resolve(result);
+  }
+};
 
-    socketRequest.server.onerror = function (err) {
-      reject(err);
-    };
+const getRequestSocket = () => {
+  if (!socket_req) {
+    socket_req = new zmq.Dealer();
+    socket_req.on('message', handleAnswer);
 
     try {
-      socketRequest.server.connect(REQRES_ENDPOINT);
+      socket_req.connect(REQRES_ENDPOINT);
     }
     catch (error) {
       console.error(`WebSocket connection to '${REQRES_ENDPOINT} failed: `, error);
     }
+  }
+  return socket_req;
+};
+
+const socketRequest = (_package, plugin, method, kwargs) => (
+  new Promise((resolve, reject) => {
+    const requestId = uuidv4();
+
+    const timer = setTimeout(() => {
+      pendingRequests.delete(requestId);
+      reject(`No answer within ${REQUEST_TIMEOUT_MS / 1000} s`);
+    }, REQUEST_TIMEOUT_MS);
+    pendingRequests.set(requestId, { resolve, reject, timer });
 
     const payload = preparePayload(
       requestId,
@@ -92,7 +104,8 @@ const socketRequest = (_package, plugin, method, kwargs) => (
       method,
       kwargs,
     );
-    socketRequest.server.send(encodeMessage(payload));
+    // The empty frame stands in for the envelope that a Req socket would add
+    getRequestSocket().send([zmq.Buffer.alloc(0), encodeMessage(payload)]);
   })
 );
 

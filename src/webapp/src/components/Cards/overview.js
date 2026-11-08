@@ -20,6 +20,7 @@ import { useTheme } from '@mui/material/styles';
 
 import Header from '../Header';
 import request from '../../utils/request';
+import { useCardsChanges } from '../../utils/use-updates';
 
 const SORT_ORDERS = ['name', 'id'];
 const SORT_STORAGE_KEY = 'cardsSortOrder';
@@ -52,6 +53,8 @@ const CardsOverview = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [sortOrder, setSortOrder] = useState(loadSortOrder);
+  // Cards registered, edited or deleted (also on other devices, or by renaming folders): load again without a spinner
+  const cardsChanges = useCardsChanges();
 
   const changeSortOrder = (event, value) => {
     // Clicking the active button deselects it: keep the current order then
@@ -65,17 +68,22 @@ const CardsOverview = () => {
   };
 
   useEffect(() => {
+    let isMounted = true;
     const loadCardList = async () => {
-      setIsLoading(true);
       const { result, error } = await request('cardsList');
+      if (!isMounted) return;
       setIsLoading(false);
 
-      if(result) setData(result);
+      if(result) {
+        setData(result);
+        setError(null);
+      }
       if(error) setError(error);
     }
 
     loadCardList();
-  }, []);
+    return () => { isMounted = false; };
+  }, [cardsChanges]);
 
   return (
     <Grid container id="cards">

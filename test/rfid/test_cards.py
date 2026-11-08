@@ -110,3 +110,26 @@ def test_rewrite_paths_many_moves_each_card_once(cfg_cards, monkeypatch):
     assert cfg_cards['b']['kwargs'] == {'song_url': '/music/Maus/a.mp3'}
     assert cfg_cards['folder']['args'] == ['/music/Maus']
     assert saved == [True]
+
+
+@pytest.fixture
+def published(cfg_cards, monkeypatch):
+    """Topics and payloads sent by the card database"""
+    sent = []
+
+    class RecordingPublisher:
+        def send(self, topic, payload):
+            sent.append((topic, payload))
+
+    monkeypatch.setattr(publishing, 'get_publisher', lambda: RecordingPublisher())
+    return sent
+
+
+def test_changes_publish_a_new_stamp_each(published):
+    cards.register_card('new', 'play_folder', args=['/music/B'], auto_save=False)
+    cards.delete_card('new', auto_save=False)
+
+    assert [topic for topic, _ in published] == ['cards.database.has_changed'] * 2
+    first, second = (payload for _, payload in published)
+    assert isinstance(first, float)
+    assert second >= first

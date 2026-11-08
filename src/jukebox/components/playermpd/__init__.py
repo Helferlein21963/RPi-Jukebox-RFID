@@ -11,7 +11,9 @@ Status information in three topics
   - ...
 2) Elapsed time: published every 250 ms, unless constant
   - elapsed
-3) Folder Config: published only on change
+3) Library: ``library.updated`` with ``{'db_update': <MPD database time stamp>}``, published when the MPD database
+   changed (rename, reorder, import, files changed on disk with MPD's auto_update), so the web app reloads its lists
+4) Folder Config: published only on change
    This belongs to the folder being played
    Publish:
    - random, resume, single, loop
@@ -108,6 +110,9 @@ cfg = jukebox.cfghandler.get_handler('jukebox')
 
 #: Remaining time [s] of the last song, below which a following stop counts as "playlist has played to its end"
 PLAYLIST_END_MARGIN = 2.0
+
+#: The MPD database stamp is checked every this many status polls (~2 s), and when an update has finished
+LIBRARY_CHECK_POLLS = 8
 
 
 def _is_last_song_ending(status: dict) -> bool:
@@ -217,6 +222,10 @@ class PlayerMPD:
         self._was_near_playlist_end = False
         self._saved_folder = None
         self.mpd_status_poll_interval = 0.25
+        # For publishing library changes (see _check_library_update): check at the first poll
+        self._library_db_update = None
+        self._library_poll_count = LIBRARY_CHECK_POLLS
+        self._was_updating_db = False
         self.mpd_lock = MpdLock(self.mpd_client, self.mpd_host, 6600)
         self.status_is_closing = False
         # self.status_thread = threading.Timer(self.mpd_status_poll_interval, self._mpd_status_poll).start()
@@ -339,6 +348,7 @@ class PlayerMPD:
         self.mpd_status.update(current_song)
         # Use the fresh status/current_song here: self.mpd_status still contains keys of songs played before
         self._track_folder_position(status, current_song)
+        self._check_library_update(status)
 
         # Delete the volume key to avoid confusion
         # Volume is published via the 'volume' component!
@@ -347,6 +357,35 @@ class PlayerMPD:
         except KeyError:
             pass
         publishing.get_publisher().send('playerstatus', self.mpd_status)
+
+    def _check_library_update(self, status: dict):
+        """
+        Publish ``library.updated`` when the MPD database changed, called by the status poll
+
+        The time stamp of the database (``db_update`` of MPD's stats) is checked every :data:`LIBRARY_CHECK_POLLS`
+        polls and right after an update has finished. The publisher resends cached topics to every new subscriber,
+        so the web app reloads only when the stamp differs from the one it has.
+
+        :param status: The current MPD status
+        """
+        is_updating = 'updating_db' in status
+        has_finished = self._was_updating_db and not is_updating
+        self._was_updating_db = is_updating
+        self._library_poll_count += 1
+        if not has_finished and self._library_poll_count < LIBRARY_CHECK_POLLS:
+            return
+        self._library_poll_count = 0
+
+        stats = self.mpd_retry_with_mutex(self.mpd_client.stats)
+        try:
+            db_update = int(stats['db_update'])
+        except (TypeError, KeyError, ValueError):
+            # MPD not reachable (already logged) or no database yet
+            return
+        if db_update != self._library_db_update:
+            self._library_db_update = db_update
+            logger.debug(f"Library updated: {db_update}")
+            publishing.get_publisher().send('library.updated', {'db_update': db_update})
 
     def _track_folder_position(self, status: dict, current_song: dict):
         """

@@ -7,11 +7,14 @@ const PUBSUB_ENDPOINT = `ws://${HOST}:5557`;
 
 const SUBSCRIPTIONS = [
   'batt_status',
+  // Changes of the card database and the music library: lists load again (utils/use-updates.js)
+  'cards.database.has_changed',
   'core.plugins.loaded',
   'core.version',
   'core.started_at',
   'host.timer.cputemp',
   'host.temperature.cpu',
+  'library.updated',
   'playerstatus',
   'rfid.card_id',
   'timers.timer_fade_volume',

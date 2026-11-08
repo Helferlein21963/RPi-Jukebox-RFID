@@ -9,6 +9,7 @@ import {
 } from "@mui/material";
 
 import request from '../../../../utils/request';
+import { useLibraryChanges } from '../../../../utils/use-updates';
 
 import SongListItem from './song-list-item';
 import { isSongPlaying, useNowPlaying } from '../../now-playing';
@@ -30,19 +31,26 @@ const Songs = ({
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // Changes of the library: load again without a spinner, keeping the list until the new one is there
+  const libraryChanges = useLibraryChanges();
 
   useEffect(() => {
+    let isMounted = true;
     const fetchSongList = async () => {
-      setIsLoading(true);
       const { result, error } = await request('allSongsList');
+      if (!isMounted) return;
       setIsLoading(false);
 
-      if(result) setSongs(result);
+      if(result) {
+        setSongs(result);
+        setError(null);
+      }
       if(error) setError(error);
     }
 
     fetchSongList();
-  }, []);
+    return () => { isMounted = false; };
+  }, [libraryChanges]);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);

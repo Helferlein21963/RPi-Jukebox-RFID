@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -8,6 +8,7 @@ import {
 } from "@mui/material";
 
 import request from '../../../../utils/request';
+import { useLibraryChanges } from '../../../../utils/use-updates';
 import FolderList from "./folder-list";
 import { useMusicLibraryPath } from '../../now-playing';
 import { sortFolders } from '../../sort';
@@ -25,6 +26,9 @@ const Folders = ({
   const [isLoading, setIsLoading] = useState(true);
   // Increased to load the folder again (e.g. after renaming a song)
   const [reloadCount, setReloadCount] = useState(0);
+  // Changes of the library, also from other devices or files changed on the box
+  const libraryChanges = useLibraryChanges();
+  const loadedDir = useRef(undefined);
   // Folder paths are absolute: needed to recognize the library root
   const libraryPath = useMusicLibraryPath();
 
@@ -37,20 +41,29 @@ const Folders = ({
   };
 
   useEffect(() => {
+    let isCurrent = true;
     const fetchFolderList = async () => {
-      setIsLoading(true);
+      // Loading the same folder again: keep showing it (and the scroll position) until the new list is there
+      if (loadedDir.current !== dir) setIsLoading(true);
       const { result, error } = await request(
         'folderList',
         { folder: decodeURIComponent(dir) }
       );
+      // Another folder was opened meanwhile
+      if (!isCurrent) return;
+      loadedDir.current = dir;
       setIsLoading(false);
 
-      if(result) setFolders(result);
+      if(result) {
+        setFolders(result);
+        setError(null);
+      }
       if(error) setError(error);
     }
 
     fetchFolderList();
-  }, [dir, reloadCount]);
+    return () => { isCurrent = false; };
+  }, [dir, reloadCount, libraryChanges]);
 
   // Subfolders, then the songs, in the chosen order (A–Z: the songs as they are played)
   const filteredFolders = sortFolders(folders.filter(search), sort);

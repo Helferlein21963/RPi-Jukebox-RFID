@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -8,6 +8,7 @@ import {
 
 import request from '../../../../utils/request';
 import { flatByAlbum } from '../../../../utils/utils';
+import { useLibraryChanges } from '../../../../utils/use-updates';
 
 import AlbumList from "./album-list";
 import { albumDates, sortAlbums } from '../../sort';
@@ -20,6 +21,9 @@ const Albums = ({ musicFilter, sort }) => {
   const [isLoading, setIsLoading] = useState(true);
   // Date of each album (its newest song), only loaded for sorting by date
   const [dates, setDates] = useState(null);
+  // Changes of the library: load again without a spinner, keeping the list until the new one is there
+  const libraryChanges = useLibraryChanges();
+  const datesLoadedFor = useRef(undefined);
 
   const search = ({ albumartist, album }) => {
     if (musicFilter === '') return true;
@@ -31,28 +35,35 @@ const Albums = ({ musicFilter, sort }) => {
   };
 
   useEffect(() => {
+    let isMounted = true;
     const fetchAlbumList = async () => {
-      setIsLoading(true);
       const { result, error } = await request('albumList');
+      if (!isMounted) return;
       setIsLoading(false);
 
-      if(result) setAlbums(result.reduce(flatByAlbum, []));
+      if(result) {
+        setAlbums(result.reduce(flatByAlbum, []));
+        setError(null);
+      }
       if(error) setError(error);
     }
 
     fetchAlbumList();
-  }, []);
+    return () => { isMounted = false; };
+  }, [libraryChanges]);
 
   useEffect(() => {
-    if (sort !== 'recent' || dates) return;
+    if (sort !== 'recent' || datesLoadedFor.current === libraryChanges) return;
     let isMounted = true;
     const fetchDates = async () => {
       const { result } = await request('allSongsList');
-      if (isMounted) setDates(albumDates(result || []));
+      if (!isMounted) return;
+      datesLoadedFor.current = libraryChanges;
+      setDates(albumDates(result || []));
     };
     fetchDates();
     return () => { isMounted = false; };
-  }, [sort, dates]);
+  }, [sort, libraryChanges]);
 
   const sortedAlbums = useMemo(
     () => sortAlbums(albums, sort, dates || {}),

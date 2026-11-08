@@ -32,6 +32,15 @@ cfg_cards = jukebox.cfghandler.get_handler('cards')
 cfg_main = jukebox.cfghandler.get_handler('jukebox')
 
 
+def _publish_database_changed():
+    """Publish ``cards.database.has_changed`` after the card database changed, e.g. for the web app to reload its lists
+
+    The payload is the time of the change (seconds since the epoch, with fractions): it differs for every change,
+    so subscribers can tell a change from the cached value the publisher resends to every new subscriber.
+    """
+    publishing.get_publisher().send(f'{plugs.loaded_as(__name__)}.database.has_changed', time.time())
+
+
 @plugs.register
 def list_cards():
     """Provide a summarized, decoded list of all card actions
@@ -89,7 +98,7 @@ def delete_card(card_id: str, auto_save: bool = True):
             msg = f"Attempt to delete non-existing key: {card_id}"
             log.error(msg)
             raise KeyError(msg)
-    publishing.get_publisher().send(f'{plugs.loaded_as(__name__)}.database.has_changed', time.ctime())
+    _publish_database_changed()
 
 
 @plugs.register
@@ -138,7 +147,7 @@ def register_card(card_id: str, cmd_alias: str,
             cfg_cards[card_id]['ignore_card_removal_action'] = ignore_card_removal_action
         if auto_save:
             cfg_cards.save()
-    publishing.get_publisher().send(f'{plugs.loaded_as(__name__)}.database.has_changed', time.ctime())
+    _publish_database_changed()
 
 
 #: Player methods whose first argument (or keyword argument) is a folder or song of the music library
@@ -185,7 +194,7 @@ def _rewrite_card_paths(moved, dry_run: bool) -> int:
         if changed and not dry_run:
             cfg_cards.save()
     if changed and not dry_run:
-        publishing.get_publisher().send(f'{plugs.loaded_as(__name__)}.database.has_changed', time.ctime())
+        _publish_database_changed()
     return changed
 
 
@@ -243,7 +252,7 @@ def load_card_database(filename):
         # Save the empty card database, to make sure we can create the file and have access to it
         cfg_cards.save(only_if_changed=False)
     check_card_database()
-    publishing.get_publisher().send(f'{plugs.loaded_as(__name__)}.database.has_changed', time.ctime())
+    _publish_database_changed()
 
 
 @plugs.register

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 
 import request from '../../../../../utils/request';
+import { useLibraryChanges } from '../../../../../utils/use-updates';
 
 import SongListHeader from './song-list-header';
 import SongListHeadline from './song-list-headline';
@@ -30,10 +31,15 @@ const SongList = ({
   const [songs, setSongs] = useState([]);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Changes of the library: load the same album again without a spinner
+  const libraryChanges = useLibraryChanges();
+  const loadedAlbum = useRef(undefined);
 
   useEffect(() => {
+    let isCurrent = true;
+    const albumKey = JSON.stringify([artist, album]);
     const getSongList = async () => {
-      setIsLoading(true);
+      if (loadedAlbum.current !== albumKey) setIsLoading(true);
       const { result, error } = await request(
         'songList',
         {
@@ -41,16 +47,20 @@ const SongList = ({
           albumartist: artist,
         }
       );
+      if (!isCurrent) return;
+      loadedAlbum.current = albumKey;
       setIsLoading(false);
 
       if(result) {
         setSongs(result);
+        setError(null);
       }
       if(error) setError(error);
     }
 
     getSongList();
-  }, [album, artist]);
+    return () => { isCurrent = false; };
+  }, [album, artist, libraryChanges]);
 
   const isAlbumCurrent = songs.some(({ file }) => isSongPlaying(nowPlaying, file));
 

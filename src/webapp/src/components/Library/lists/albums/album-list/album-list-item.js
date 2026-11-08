@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useState } from 'react';
+import React, { forwardRef } from 'react';
 import {
   Link,
   useLocation,
@@ -15,7 +15,7 @@ import {
 
 import noCover from '../../../../../assets/noCover.jpg';
 
-import request from '../../../../../utils/request';
+import useCover from '../../../../../utils/use-cover';
 import { NowPlayingIcon } from '../../../now-playing';
 import { tagToUrl } from '../utils';
 
@@ -28,23 +28,11 @@ const AlbumListItem = ({
 }) => {
   const { t } = useTranslation();
   const { search: urlSearch } = useLocation();
-  const [coverImage, setCoverImage] = useState(noCover);
-
-  useEffect(() => {
-    const getCoverArt = async () => {
-      const { result } = await request('getAlbumCoverArt', {
-        albumartist: albumartist,
-        album: album
-      });
-      if (result) {
-        setCoverImage(`/cover-cache/${result}`);
-      };
-    }
-
-    if (albumartist && album) {
-      getCoverArt();
-    }
-  }, [albumartist, album]);
+  // Cached like the covers of folders and cards: the list mounts its items again when filtered
+  const cover = useCover(
+    albumartist && album ? ['getAlbumCoverArt', { albumartist, album }] : undefined
+  );
+  const coverImage = cover || noCover;
 
   const AlbumLink = forwardRef((props, ref) => {
     const { data } = props;

@@ -2,6 +2,7 @@ import { useContext, useEffect, useState } from 'react';
 
 import PubSubContext from '../../context/pubsub/context';
 import request from '../../utils/request';
+import { useCardsChanges } from '../../utils/use-updates';
 import { cardMusic } from '../Cards/card-music';
 import {
   isAlbumPlaying,
@@ -68,13 +69,14 @@ const useCurrentCardOf = (cardsList, libraryPath) => {
 
 /**
  * Card of the current playback, see useCurrentCardOf. The card list is loaded again
- * when another card is swiped or the song changes, so new or edited cards show up.
+ * when another card is swiped, the song changes or the card database changed.
  */
 const useCurrentCard = () => {
   const { state: { 'rfid.card_id': swipedCardId } } = useContext(PubSubContext);
   const { isActive, file } = useNowPlaying();
   const libraryPath = useMusicLibraryPath();
   const [cardsList, setCardsList] = useState(undefined);
+  const cardsChanges = useCardsChanges();
 
   useEffect(() => {
     if (!isActive) return undefined;
@@ -89,7 +91,7 @@ const useCurrentCard = () => {
 
     loadCards();
     return () => { isMounted = false; };
-  }, [swipedCardId, isActive, file]);
+  }, [swipedCardId, isActive, file, cardsChanges]);
 
   return useCurrentCardOf(isActive ? cardsList : undefined, libraryPath);
 };
