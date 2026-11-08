@@ -16,18 +16,37 @@ const LinkForm = ({ status, disabled }) => {
   const { t } = useTranslation();
   const [url, setUrl] = useState(status?.url || '');
   const [error, setError] = useState(null);
+  // Feedback right after the click: the state 'fetching' only arrives with the next published status
+  const [isSending, setIsSending] = useState(false);
   const isFetching = status?.state === 'fetching';
+  const isLoading = isSending || isFetching;
 
   // Show the link of a job that was started elsewhere (other device, page reload)
   useEffect(() => {
     if (status?.url) setUrl(status.url);
   }, [status?.url]);
 
+  // Any new state of the core ends the waiting; the timer in case no status arrives
+  useEffect(() => {
+    setIsSending(false);
+  }, [status?.state]);
+
+  useEffect(() => {
+    if (!isSending) return undefined;
+    const timer = setTimeout(() => setIsSending(false), 10000);
+    return () => clearTimeout(timer);
+  }, [isSending]);
+
   const fetchInfo = async (event) => {
     event.preventDefault();
+    if (isLoading) return;
     setError(null);
+    setIsSending(true);
     const { error } = await request('ytimportFetchInfo', { url: url.trim() });
-    if (error) setError(String(error));
+    if (error) {
+      setIsSending(false);
+      setError(String(error));
+    }
   };
 
   return (
@@ -41,7 +60,7 @@ const LinkForm = ({ status, disabled }) => {
             label={t('import.link.label')}
             placeholder="https://www.youtube.com/..."
             value={url}
-            disabled={disabled}
+            disabled={disabled || isSending}
             onChange={(event) => setUrl(event.target.value)}
           />
         </Grid>
@@ -49,13 +68,13 @@ const LinkForm = ({ status, disabled }) => {
           <Button
             type="submit"
             variant="contained"
-            disabled={disabled || !url.trim()}
+            disabled={disabled || isSending || !url.trim()}
           >
             {t('import.link.load')}
           </Button>
         </Grid>
       </Grid>
-      {isFetching &&
+      {isLoading &&
         <Grid container spacing={1} alignItems="center" sx={{ marginTop: 1 }}>
           <Grid item>
             <CircularProgress size={20} />
@@ -65,11 +84,13 @@ const LinkForm = ({ status, disabled }) => {
               {t('import.link.loading')}
             </Typography>
           </Grid>
-          <Grid item>
-            <Button size="small" onClick={() => request('ytimportCancel')}>
-              {t('import.cancel')}
-            </Button>
-          </Grid>
+          {isFetching &&
+            <Grid item>
+              <Button size="small" onClick={() => request('ytimportCancel')}>
+                {t('import.cancel')}
+              </Button>
+            </Grid>
+          }
         </Grid>
       }
       {error &&
