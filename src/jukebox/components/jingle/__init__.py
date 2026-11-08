@@ -45,6 +45,10 @@ class JingleFactory:
 
 factory: JingleFactory
 
+#: Set when the shutdown sound was already played at the start of a host shutdown / reboot,
+#: so it is not played a second time when the daemon is terminated
+_shutdown_sound_played = False
+
 
 @plugin.initialize
 def initialize():
@@ -93,8 +97,15 @@ def play_startup():
 
 
 @plugin.register
-def play_shutdown():
-    """Play the shutdown sound (using jingle.play)"""
+def play_shutdown(skip_at_exit: bool = False):
+    """Play the shutdown sound (using jingle.play)
+
+    :param skip_at_exit: Do not play the shutdown sound again when the daemon is terminated. The host interface
+        uses this to play the sound right when a shutdown / reboot starts, as immediate feedback
+    """
+    global _shutdown_sound_played
+    if skip_at_exit:
+        _shutdown_sound_played = True
     play(cfg['jingle']['shutdown_sound'])
 
 
@@ -110,7 +121,9 @@ def finalize():
 def atexit(signal_id: int, **ignored_kwargs):
     # Only play the shutdown sound when terminated with a proper command. Not on Ctrl-C (faster exit for developers :-)
     if signal_id == signal.SIGTERM:
-        if 'shutdown_sound' in cfg['jingle']:
+        if _shutdown_sound_played:
+            logger.debug("Shutdown sound was already played when the shutdown started")
+        elif 'shutdown_sound' in cfg['jingle']:
             # Never play the shutdown sound as thread!
             # It causes a race condition with the plugin volume, which shuts down faster
             # But we need to have the plugin volume to reset the volume level after the sound was played

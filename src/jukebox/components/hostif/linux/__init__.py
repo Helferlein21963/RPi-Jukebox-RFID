@@ -42,10 +42,22 @@ except Exception:
 # ---------------------------------------------------------------------------
 # Shutdown / Reboot
 # ---------------------------------------------------------------------------
+def _announce_shutdown():
+    """Stop the music and play the shutdown sound right away, as feedback that the shutdown / reboot has started
+
+    Without this, the sound only comes when systemd terminates the daemon, several seconds later.
+    The jingle plugin then skips it at exit (except in debug mode, where the host keeps running).
+    """
+    plugin.call_ignore_errors('player', 'ctrl', 'stop')
+    if 'shutdown_sound' in cfg.getn('jingle', default={}):
+        plugin.call_ignore_errors('jingle', 'play_shutdown', kwargs={'skip_at_exit': not IS_DEBUG})
+
+
 @plugin.register
 def shutdown():
     """Shutdown the host machine"""
     logger.info('Shutting down host system now')
+    _announce_shutdown()
     debug_flag = '-k' if IS_DEBUG else ''
     # Detach the shell and wait 1 second before command execution
     # for return value to pass up the RPC call stack.
@@ -68,6 +80,7 @@ def shutdown():
 def reboot():
     """Reboot the host machine"""
     logger.info('Rebooting down host system now')
+    _announce_shutdown()
     debug_flag = '-k' if IS_DEBUG else ''
     ret = subprocess.run(f'(sleep 1; sudo shutdown {debug_flag} -r now) &', shell=True, capture_output=False,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
