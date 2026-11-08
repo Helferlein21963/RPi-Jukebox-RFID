@@ -113,12 +113,16 @@
       "card-name-placeholder": "z.B. Figur Löwe"
     },
     "list": {
-      "no-cards-registered": "Es wurden noch keine Karten registriert!"
+      "no-cards-registered": "Es wurden noch keine Karten registriert!",
+      "no-matching-cards": "Keine Karte passt zu „{{filter}}“."
     },
     "overview": {
       "cards": "Karten",
       "loading-error": "Während des Ladens der Karten ist ein Fehler aufgetreten",
-      "register-card": "Registriere eine Karte"
+      "register-card": "Registriere eine Karte",
+      "search-label": "Karten durchsuchen",
+      "search-placeholder": "Nach Name, ID oder Ordner suchen",
+      "search-clear": "Suche löschen"
     },
     "register": {
       "register-card": "Registriere eine Karte"

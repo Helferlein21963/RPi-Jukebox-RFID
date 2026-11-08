@@ -24,7 +24,27 @@ const toDisplayPath = (path, libraryPath) => (
     : path
 );
 
-const CardsList = ({ cardsList }) => {
+// Text shown below the card name/ID: the command alias with its arguments, or the full RPC call
+const describeCard = ({ from_alias, action, func }, libraryPath) => (
+  from_alias
+    ? reject(
+        isNil,
+        flatten([from_alias, action?.args])
+      ).map(arg => toDisplayPath(arg, libraryPath)).join(', ')
+    : func
+);
+
+// Case-insensitive match on card ID, name and description
+const matchesFilter = (cardId, card, description, filter) => {
+  const needle = filter.trim().toLowerCase();
+  if (!needle) return true;
+
+  return [cardId, card.name, description].some(
+    value => typeof value === 'string' && value.toLowerCase().includes(needle)
+  );
+};
+
+const CardsList = ({ cardsList, filter = '' }) => {
   const { t } = useTranslation();
   const libraryPath = useMusicLibraryPath();
 
@@ -39,13 +59,8 @@ const CardsList = ({ cardsList }) => {
       return <Link ref={ref} to={location} {...props} />
     });
 
-    const { from_alias, action, func, name } = cardsList[cardId];
-    const description = from_alias
-      ? reject(
-          isNil,
-          flatten([from_alias, action?.args])
-        ).map(arg => toDisplayPath(arg, libraryPath)).join(', ')
-      : func
+    const { name } = cardsList[cardId];
+    const description = describeCard(cardsList[cardId], libraryPath);
 
     return (
       <ListItem
@@ -81,12 +96,25 @@ const CardsList = ({ cardsList }) => {
     );
   }
 
+  if (!cardsList || Object.keys(cardsList).length === 0) {
+    return <Typography>{t('cards.list.no-cards-registered')}</Typography>;
+  }
+
+  const cardIds = Object.keys(cardsList).filter(cardId => matchesFilter(
+    cardId,
+    cardsList[cardId],
+    describeCard(cardsList[cardId], libraryPath),
+    filter,
+  ));
+
   return (
-    cardsList && Object.keys(cardsList).length > 0
+    cardIds.length > 0
       ? <List sx={{ width: '100%' }}>
-          {Object.keys(cardsList).map(ListItemLink)}
+          {cardIds.map(ListItemLink)}
         </List>
-      : <Typography>{t('cards.list.no-cards-registered')}</Typography>
+      : <Typography sx={{ marginTop: '16px' }}>
+          {t('cards.list.no-matching-cards', { filter: filter.trim() })}
+        </Typography>
   );
 }
 

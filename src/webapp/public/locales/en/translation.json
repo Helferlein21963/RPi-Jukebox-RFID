@@ -113,12 +113,16 @@
       "card-name-placeholder": "e.g. lion figure"
     },
     "list": {
-      "no-cards-registered": "No cards registered!"
+      "no-cards-registered": "No cards registered!",
+      "no-matching-cards": "No card matches “{{filter}}”."
     },
     "overview": {
       "cards": "Cards",
       "loading-error": "An error occurred while loading cards list.",
-      "register-card": "Register a card"
+      "register-card": "Register a card",
+      "search-label": "Search cards",
+      "search-placeholder": "Search by name, ID or folder",
+      "search-clear": "Clear search"
     },
     "register": {
       "register-card": "Register a card"
