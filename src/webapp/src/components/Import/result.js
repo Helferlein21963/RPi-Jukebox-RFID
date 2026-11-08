@@ -39,7 +39,7 @@ const Result = ({ status }) => {
 
   if (state === 'done') {
     return (
-      <Grid container direction="column" spacing={2}>
+      <Grid container direction="column" wrap="nowrap" spacing={2}>
         <Grid item>
           <Alert severity="success">
             {t('import.result.done', { imported, total, folder })}
@@ -64,7 +64,7 @@ const Result = ({ status }) => {
   }
 
   return (
-    <Grid container direction="column" spacing={2}>
+    <Grid container direction="column" wrap="nowrap" spacing={2}>
       <Grid item>
         {state === 'cancelled'
           ? <Alert severity="info">{t('import.result.cancelled')}</Alert>

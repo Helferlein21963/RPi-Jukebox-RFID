@@ -73,7 +73,7 @@ const Editor = ({ info }) => {
   };
 
   return (
-    <Grid container direction="column" spacing={2}>
+    <Grid container direction="column" wrap="nowrap" spacing={2}>
       <Grid item>
         <Grid container spacing={2} alignItems="center" wrap="nowrap">
           {info.thumbnail &&

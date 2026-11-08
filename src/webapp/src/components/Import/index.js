@@ -42,9 +42,12 @@ const Import = () => {
     <Grid
       container
       direction="column"
+      wrap="nowrap"
       id="import"
       sx={{
         '& > .MuiGrid-item': { marginBottom: theme.spacing(1) },
+        // Long titles and folder names (no spaces, only '_') must not widen the page
+        '& .MuiTypography-root, & .MuiFormHelperText-root, & .MuiAlert-message': { overflowWrap: 'anywhere' },
         padding: '10px',
       }}
     >
@@ -53,7 +56,7 @@ const Import = () => {
           <CardHeader title={t('import.title')} />
           <Divider />
           <CardContent>
-            <Grid container direction="column" spacing={2}>
+            <Grid container direction="column" wrap="nowrap" spacing={2}>
               {state !== 'importing' &&
                 <Grid item>
                   <LinkForm status={status} disabled={isBusy(status)} />

@@ -48,7 +48,7 @@ const Tools = ({ status }) => {
   const isInstalled = !!ytdlp && !!versions.mutagen;
 
   return (
-    <Grid container direction="column" spacing={1}>
+    <Grid container direction="column" wrap="nowrap" spacing={1}>
       <Grid item>
         <Grid container alignItems="center" spacing={1}>
           <Grid item xs>

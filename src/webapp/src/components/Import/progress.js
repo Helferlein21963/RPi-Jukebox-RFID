@@ -30,7 +30,7 @@ const ImportProgress = ({ status }) => {
     : 0;
 
   return (
-    <Grid container direction="column" spacing={2}>
+    <Grid container direction="column" wrap="nowrap" spacing={2}>
       <Grid item>
         <Typography variant="subtitle1">
           {t('import.progress.title', { folder })}
