@@ -85,7 +85,7 @@ const FolderListItem = ({
       }
     >
       <ListItemButton selected={isCurrent} {...buttonProps}>
-        <FolderTypeAvatar type={type} isCurrent={isCurrent} isPlaying={isPlaying} />
+        <FolderTypeAvatar type={type} path={path} isCurrent={isCurrent} isPlaying={isPlaying} />
         <ListItemText primary={name} />
       </ListItemButton>
     </ListItem>

@@ -826,6 +826,28 @@ class PlayerMPD:
         return self.get_single_coverart(song_list[0]['file'])
 
     @plugs.tag
+    def get_folder_coverart(self, folder: str) -> str:
+        """
+        Cover of a music folder, e.g. for the card list: the cover of its first song (see :meth:`get_single_coverart`)
+
+        Songs in sub-folders count as well, so a folder of folders shows the cover of its first song.
+
+        :param folder: Absolute path, or relative to the music library
+        :return: File name in the cover cache, empty if there is no song with a cover
+        """
+        library = self.get_music_library_path()
+        try:
+            target = library_edit.resolve_in_library(library, folder)
+        except (ValueError, FileNotFoundError) as e:
+            logger.debug(f"No folder cover: {e}")
+            return ""
+        entries = self.mpd_retry_with_mutex(self.mpd_client.listall, os.path.relpath(target, library)) or []
+        songs = sorted((entry['file'] for entry in entries if 'file' in entry), key=str.casefold)
+        if not songs:
+            return ""
+        return self.get_single_coverart(songs[0])
+
+    @plugs.tag
     def get_music_library_path(self) -> str:
         """
         Absolute path of the music library (the ``music_directory`` of MPD)

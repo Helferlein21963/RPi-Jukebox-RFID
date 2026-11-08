@@ -1,6 +1,7 @@
 # RPi-Jukebox-RFID Version 3
 # Copyright (c) See file LICENSE in project root folder
-"""Tests for the library methods of PlayerMPD used by the web app: list_all_songs, get_folder_content"""
+"""Tests for the library methods of PlayerMPD used by the web app: list_all_songs, get_folder_content,
+get_folder_coverart"""
 import os
 import sys
 import threading
@@ -91,3 +92,33 @@ def test_folder_content_outside_library_is_refused(player, library, folder):
 def test_music_library_path_is_absolute(player, library):
     assert player.get_music_library_path() == str(library)
 
+
+def test_folder_coverart_uses_first_song(player, library):
+    (library / 'Conni' / 'Teil 2').mkdir()
+    player.mpd_client.listall.return_value = [
+        {'directory': 'Conni/Teil 2'},
+        {'file': 'Conni/Teil 2/01.mp3'},
+        {'file': 'Conni/01.mp3'},
+    ]
+    player.get_single_coverart = mock.Mock(return_value='conni.jpg')
+
+    assert player.get_folder_coverart(f'{library}/Conni/') == 'conni.jpg'
+    player.mpd_client.listall.assert_called_once_with('Conni')
+    player.get_single_coverart.assert_called_once_with('Conni/01.mp3')
+
+
+@pytest.mark.parametrize('folder', ['Missing', '..', './'])
+def test_folder_coverart_without_folder_is_empty(player, library, folder):
+    player.get_single_coverart = mock.Mock()
+
+    assert player.get_folder_coverart(folder) == ''
+    player.mpd_client.listall.assert_not_called()
+    player.get_single_coverart.assert_not_called()
+
+
+def test_folder_coverart_without_songs_is_empty(player, library):
+    player.mpd_client.listall.return_value = [{'directory': 'Conni/Leer'}]
+    player.get_single_coverart = mock.Mock()
+
+    assert player.get_folder_coverart('Conni') == ''
+    player.get_single_coverart.assert_not_called()

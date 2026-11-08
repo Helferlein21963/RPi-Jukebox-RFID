@@ -325,7 +325,9 @@
     "display": {
       "unknown-title": "Unknown title",
       "unknown-artist": "Unknown artists",
-      "no-song-in-queue": "No song in queue"
+      "no-song-in-queue": "No song in queue",
+      "card-id": "Card {{id}}",
+      "card-edit": "Edit card"
     },
     "playlist": {
       "title": "Playlist ({{count}} songs)",

@@ -4,7 +4,6 @@ import { flatten, isNil, reject } from 'ramda';
 import { useTranslation } from 'react-i18next';
 
 import {
-  Avatar,
   List,
   ListItem,
   ListItemAvatar,
@@ -12,17 +11,10 @@ import {
   Typography
 } from '@mui/material';
 
-import BookmarkIcon from '@mui/icons-material/Bookmark';
-
-import { toLibraryPath, useMusicLibraryPath } from '../Library/now-playing';
-import { DEFAULT_AUDIO_DIR } from '../../config';
-
-// Folders inside the music library are shown relative to it
-const toDisplayPath = (path, libraryPath) => (
-  typeof path === 'string'
-    ? toLibraryPath(path, libraryPath).replace(`${DEFAULT_AUDIO_DIR}/`, '')
-    : path
-);
+import { useMusicLibraryPath } from '../Library/now-playing';
+import { useCurrentCardOf } from '../Player/current-card';
+import { CardAvatar } from './card-cover';
+import { toDisplayPath } from './card-music';
 
 // Text shown below the card name/ID: the command alias with its arguments, or the full RPC call
 const describeCard = ({ from_alias, action, func }, libraryPath) => (
@@ -59,23 +51,28 @@ const sortCardIds = (cardIds, cardsList, sortOrder) => (
   })
 );
 
+// Defined once: a component created while rendering would mount the list items again on every
+// render, which happens often (the current card follows the player status)
+const EditCardLink = forwardRef((props, ref) => {
+  const { data } = props;
+  const location = {
+    pathname: `/cards/${data.id}/edit`,
+    state: data,
+  };
+
+  return <Link ref={ref} to={location} {...props} />
+});
+
 const CardsList = ({ cardsList, filter = '', sortOrder = 'name' }) => {
   const { t } = useTranslation();
   const libraryPath = useMusicLibraryPath();
+  // Marked with play / pause, like the library
+  const currentCard = useCurrentCardOf(cardsList, libraryPath);
 
   const ListItemLink = (cardId) => {
-    const EditCardLink = forwardRef((props, ref) => {
-      const { data } = props;
-      const location = {
-        pathname: `/cards/${data.id}/edit`,
-        state: data,
-      };
-
-      return <Link ref={ref} to={location} {...props} />
-    });
-
     const { name } = cardsList[cardId];
     const description = describeCard(cardsList[cardId], libraryPath);
+    const isCurrent = currentCard?.id === cardId;
 
     return (
       <ListItem
@@ -83,11 +80,15 @@ const CardsList = ({ cardsList, filter = '', sortOrder = 'name' }) => {
         component={EditCardLink}
         data={{ id: cardId, ...cardsList[cardId] }}
         key={cardId}
+        selected={isCurrent}
       >
         <ListItemAvatar>
-          <Avatar>
-            <BookmarkIcon />
-          </Avatar>
+          <CardAvatar
+            card={cardsList[cardId]}
+            libraryPath={libraryPath}
+            isCurrent={isCurrent}
+            isPlaying={isCurrent && currentCard.isPlaying}
+          />
         </ListItemAvatar>
         <ListItemText
           primary={
@@ -137,5 +138,4 @@ const CardsList = ({ cardsList, filter = '', sortOrder = 'name' }) => {
   );
 }
 
-export { toDisplayPath };
 export default React.memo(CardsList);

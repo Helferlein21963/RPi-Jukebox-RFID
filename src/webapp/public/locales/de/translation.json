@@ -324,7 +324,9 @@
     "display": {
       "unknown-title": "Unbekannter Titel",
       "unknown-artist": "Unbekannter Künstler",
-      "no-song-in-queue": "Es wird kein Titel abgespielt"
+      "no-song-in-queue": "Es wird kein Titel abgespielt",
+      "card-id": "Karte {{id}}",
+      "card-edit": "Karte bearbeiten"
     },
     "playlist": {
       "title": "Playlist ({{count}} Titel)",

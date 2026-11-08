@@ -9,6 +9,12 @@ const commands = {
     plugin: 'ctrl',
     method: 'get_album_coverart',
   },
+  getFolderCoverArt: {
+    _package: 'player',
+    plugin: 'ctrl',
+    method: 'get_folder_coverart',
+    argKeys: ['folder'],
+  },
   directoryTreeOfAudiofolder: {
     _package: 'player',
     plugin: 'ctrl',
