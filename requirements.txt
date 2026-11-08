@@ -19,6 +19,9 @@ python-slugify
 requests
 # For the publisher event reactor loop:
 tornado
+# For the YouTube import (ytimport). [default] adds yt-dlp-ejs, needed for YouTube
+yt-dlp[default]
+mutagen
 
 # RPi's GPIO packages:
 RPi.GPIO

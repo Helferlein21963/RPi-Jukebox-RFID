@@ -19,6 +19,7 @@ modules:
     bluetooth_audio_buttons: controls.bluetooth_audio_buttons
     gpio: gpio.gpioz.plugin
     sync_rfidcards: synchronisation.rfidcards
+    ytimport: ytimport
   others:
   - misc
 pulse:
@@ -150,5 +151,22 @@ speaking_text:
 sync_rfidcards:
   enable: false
   config_file: ../../shared/settings/sync_rfidcards.yaml
+# Import audio from YouTube (and other sites supported by yt-dlp) via the Web App (page 'Import')
+# Requires the Python packages yt-dlp and mutagen (can be installed on the Import page), ffmpeg and node
+ytimport:
+  # MP3 quality (ffmpeg VBR -q:a): 0 = best / largest .. 9 = smallest. 2 is about 190 kbit/s
+  audio_quality: 2
+  # JavaScript runtime yt-dlp uses for YouTube (one of: node, deno, bun, quickjs)
+  js_runtime: node
+  # Path to the runtime (file or folder) if it is not the one found in PATH,
+  # e.g. a newer node only for yt-dlp (yt-dlp requires node >= 22). Empty: from PATH
+  js_runtime_path: ''
+  # Lower CPU priority of downloads and conversion, so that playback keeps running smoothly (0 .. 19)
+  nice: 19
+  # At most this many entries of a playlist are listed
+  max_playlist_entries: 200
+  # Working directory for downloads; keep it outside the music library (MPD watches the library)
+  tmp_dir: ../../shared/tmp/ytimport
+  ffmpeg: ffmpeg
 webapp:
   coverart_cache_path: ../../src/webapp/build/cover-cache

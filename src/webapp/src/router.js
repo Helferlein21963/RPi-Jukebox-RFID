@@ -2,6 +2,7 @@ import React from 'react'
 import { Route, HashRouter, Routes } from 'react-router-dom'
 
 import Cards from './components/Cards';
+import Import from './components/Import';
 import Library from './components/Library';
 import Navigation from './components/Navigation';
 import Player from './components/Player'
@@ -35,6 +36,10 @@ const Router = () => {
           <Route
             path="cards/*"
             element={<Cards/>}
+          />
+          <Route
+            path="import/*"
+            element={<Import/>}
           />
           <Route
             path="settings/*"

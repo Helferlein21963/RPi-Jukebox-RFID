@@ -302,6 +302,57 @@ const commands = {
     argKeys: ['option'],
   },
 
+  // Host
+  restartService: {
+    _package: 'host',
+    plugin: 'restart_service',
+  },
+
+  // YouTube import
+  ytimportGetStatus: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'get_status',
+  },
+  ytimportFetchInfo: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'fetch_info',
+    argKeys: ['url'],
+  },
+  ytimportCheckFolder: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'check_folder',
+    argKeys: ['name'],
+  },
+  ytimportStart: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'start_import',
+    argKeys: ['folder', 'tracks', 'artist', 'album', 'cover'],
+  },
+  ytimportCancel: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'cancel',
+  },
+  ytimportReset: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'reset',
+  },
+  ytimportGetVersions: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'get_versions',
+  },
+  ytimportUpdate: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'update_ytdlp',
+  },
+
   // Synchronisation
   'sync_rfidcards_all': {
     _package: 'sync_rfidcards',

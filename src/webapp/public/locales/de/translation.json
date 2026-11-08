@@ -124,6 +124,64 @@
   "header": {
     "back": "Zurück"
   },
+  "import": {
+    "title": "YouTube-Import",
+    "cancel": "Abbrechen",
+    "link": {
+      "label": "Link zu Video oder Playlist",
+      "load": "Laden",
+      "loading": "Lade Infos …"
+    },
+    "editor": {
+      "folder": "Ordnername",
+      "folder-preview": "Wird gespeichert als: {{folder}}",
+      "folder-exists": "Den Ordner {{folder}} gibt es schon",
+      "folder-empty": "Bitte einen Ordnernamen eingeben",
+      "artist": "Interpret",
+      "album": "Album",
+      "split-chapters": "Kapitel als einzelne Titel ({{count}} Kapitel)",
+      "cover": "Vorschaubild als Cover übernehmen",
+      "truncated": "Es werden nur die ersten {{count}} Einträge der Playlist angezeigt.",
+      "tracks": "Titel ({{selected}} von {{total}} ausgewählt)",
+      "select-all": "Alle",
+      "select-none": "Keine",
+      "unavailable": "Nicht verfügbar",
+      "move-up": "Nach oben",
+      "move-down": "Nach unten",
+      "start": "Importieren ({{count}})"
+    },
+    "progress": {
+      "title": "Importiere nach {{folder}}",
+      "track": "Titel {{current}} von {{total}}",
+      "download": "Herunterladen",
+      "convert": "Umwandeln in MP3",
+      "overall": "Gesamt",
+      "hint": "Du kannst die Seite verlassen, der Import läuft auf der Box weiter."
+    },
+    "result": {
+      "done": "{{imported}} von {{total}} Titeln wurden in den Ordner {{folder}} importiert.",
+      "failed": "Nicht importiert",
+      "cancelled": "Der Import wurde abgebrochen.",
+      "error": "Fehler: {{error}}",
+      "new-import": "Neuer Import",
+      "open-library": "Bibliothek",
+      "assign-card": "Karte zuweisen",
+      "back": "Zurück"
+    },
+    "tools": {
+      "versions": "yt-dlp {{ytdlp}} · {{runtime}} {{version}}",
+      "ytdlp-missing": "yt-dlp ist noch nicht installiert.",
+      "install": "Installieren",
+      "update": "yt-dlp aktualisieren",
+      "updating": "yt-dlp wird installiert bzw. aktualisiert. Das kann auf der Box einige Minuten dauern.",
+      "updated": "yt-dlp {{version}} ist installiert.",
+      "restart-required": "Die neue yt-dlp-Version wird nach einem Neustart der Jukebox verwendet.",
+      "restart": "Neu starten",
+      "ffmpeg-missing": "ffmpeg wurde nicht gefunden, ohne ffmpeg ist keine Umwandlung in MP3 möglich.",
+      "js-missing": "{{runtime}} wurde nicht gefunden. yt-dlp braucht eine JavaScript-Runtime für YouTube.",
+      "js-old": "{{runtime}} {{version}} ist zu alt für yt-dlp (mindestens {{min}}). Downloads können fehlschlagen. Eine neuere Version kann mit ytimport.js_runtime_path in jukebox.yaml eingetragen werden."
+    }
+  },
   "library": {
     "loading-error": "Die Bibliothek konnte nicht geladen werden.",
     "header": {
@@ -164,7 +222,8 @@
     "start": "Start",
     "library": "Bibliothek",
     "cards": "Karten",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "import": "Import"
   },
   "player": {
     "controls": {

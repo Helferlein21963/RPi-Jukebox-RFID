@@ -15,6 +15,7 @@ const SUBSCRIPTIONS = [
   'playerstatus',
   'rfid.card_id',
   'volume.level',
+  'ytimport.status',
 ];
 
 const DEFAULT_AUDIO_DIR = '../../shared/audiofolders';
