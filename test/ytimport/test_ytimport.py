@@ -242,6 +242,68 @@ def test_id3_tag_size_and_summary(tmp_path):
     assert utils.id3_summary(data[:size // 2]) == {'title': '', 'artist': '', 'album': ''}
 
 
+@pytest.mark.parametrize('name, number, title', [
+    ('07 - Titel.mp3', 7, 'Titel.mp3'),
+    ('007_Titel.mp3', 7, 'Titel.mp3'),
+    ('3. Titel', 3, 'Titel'),
+    ('12 Titel', 12, 'Titel'),
+    ('Titel 2', None, 'Titel 2'),
+    ('1984', 1984, '1984'),
+])
+def test_track_number_and_strip_number(name, number, title):
+    assert utils.track_number(name) == number
+    assert utils.strip_number(name) == title
+
+
+def test_plan_append_names_numbered():
+    names, numbered = utils.plan_append_names(['01 - A.mp3', '02 - B.mp3'], ['Neu', 'Noch neu'])
+    assert numbered is True
+    assert names == ['03 - Neu.mp3', '04 - Noch neu.mp3']
+    # Keeps a wider numbering, widens when needed
+    assert utils.plan_append_names(['001 A.mp3'], ['Neu'])[0] == ['002 - Neu.mp3']
+    assert utils.plan_append_names(['99 - A.mp3'], ['Neu'])[0] == ['100 - Neu.mp3']
+    # An empty folder starts at 01
+    assert utils.plan_append_names([], ['Neu']) == (['01 - Neu.mp3'], True)
+
+
+def test_plan_append_names_not_numbered():
+    names, numbered = utils.plan_append_names(['01 - A.mp3', 'Lied.mp3'], ['Neu', 'lied', 'Lied'])
+    assert numbered is False
+    # Sorted in alphabetically, never the name of an existing file
+    assert names == ['Neu.mp3', 'lied (2).mp3', 'Lied (3).mp3']
+
+
+def test_plan_reorder_names():
+    names = utils.plan_reorder_names([{'file': 'Lied B.mp3'}, {'title': 'Neu'}, {'file': '03 - Lied A.ogg'},
+                                      {'file': '04 - Lied A.mp3'}])
+    assert names == ['01 - Lied B.mp3', '02 - Neu.mp3', '03 - Lied A.ogg', '04 - Lied A.mp3']
+
+
+def test_normalize_tracks_with_existing_files():
+    tracks = [{'file': 'Lied.mp3'}, {'url': 'https://y/1', 'title': 'Neu'}]
+    assert utils.normalize_tracks(tracks, allow_existing=True) == [
+        {'file': 'Lied.mp3'}, {'url': 'https://y/1', 'title': 'Neu', 'start': None, 'end': None}]
+    with pytest.raises(ValueError):
+        utils.normalize_tracks(tracks)
+    for name in ('../Lied.mp3', 'a/Lied.mp3', '..', 'a\\b.mp3'):
+        with pytest.raises(ValueError):
+            utils.normalize_tracks([{'file': name}], allow_existing=True)
+
+
+def test_set_track_number(tmp_path):
+    id3 = pytest.importorskip('mutagen.id3')
+    make_tagged_mp3(tmp_path / 'tagged.mp3', title='Lied')
+    utils.set_track_number(str(tmp_path / 'tagged.mp3'), 3, 12)
+    tags = id3.ID3(str(tmp_path / 'tagged.mp3'))
+    assert tags['TRCK'].text == ['3/12']
+    assert tags['TIT2'].text == ['Lied']
+    assert tags.version[:2] == (2, 3)
+
+    (tmp_path / 'untagged.mp3').write_bytes(b'\xff\xfb\x90\x00' + bytes(100))
+    utils.set_track_number(str(tmp_path / 'untagged.mp3'), 1, 2)
+    assert id3.ID3(str(tmp_path / 'untagged.mp3'))['TRCK'].text == ['1/2']
+
+
 def test_embedded_cover(tmp_path):
     make_tagged_mp3(tmp_path / 'with.mp3', cover=b'picture')
     make_tagged_mp3(tmp_path / 'without.mp3', cover=None)
@@ -280,6 +342,7 @@ def ctrl(tmp_path, library):
     c._status = {'state': 'idle'}
     c._last_publish = 0.0
     c._versions = None
+    c._last_info = None
     c.published = []
     c._publish = lambda force=False: c.published.append(dict(c._status))
     with mock.patch.object(ytimport.components.player, 'get_music_library_path', return_value=str(library)), \
@@ -323,11 +386,41 @@ def fake_convert(ctrl):
     return calls
 
 
-def test_check_folder(ctrl, library):
-    (library / 'Max').mkdir()
-    assert ctrl.check_folder('Max') == {'folder': 'Max', 'exists': True}
-    assert ctrl.check_folder('Neuer Ordner') == {'folder': 'Neuer_Ordner', 'exists': False}
-    assert ctrl.check_folder('???') == {'folder': '', 'exists': False}
+def test_folder_info_new(ctrl, library):
+    assert ctrl.folder_info('Neuer Ordner') == {'folder': 'Neuer_Ordner', 'exists': False}
+    assert ctrl.folder_info('???') == {'folder': '', 'exists': False}
+    # Never outside of the library
+    assert ctrl.folder_info('../audiofolders') == {'folder': 'audiofolders', 'exists': False}
+
+
+def test_folder_info_existing(ctrl, library):
+    folder = library / 'Max_uebernachtet'
+    folder.mkdir()
+    make_tagged_mp3(folder / 'b Lied.mp3', title='Lied', artist='Erzähler', album='Max')
+    (folder / '02 - Anfang.mp3').write_bytes(b'mp3')
+    (folder / 'cover.jpg').write_bytes(b'jpg')
+
+    info = ctrl.folder_info('Max übernachtet')
+    assert info == {
+        'folder': 'Max_uebernachtet', 'exists': True, 'numbered': False, 'artist': 'Erzähler', 'album': 'Max',
+        # In the order the player plays them
+        'tracks': [{'file': '02 - Anfang.mp3', 'title': 'Anfang'}, {'file': 'b Lied.mp3', 'title': 'b Lied'}],
+    }
+    (folder / 'b Lied.mp3').rename(folder / '01 - Lied.mp3')
+    assert ctrl.folder_info('Max_uebernachtet')['numbered'] is True
+
+
+def test_list_folders(ctrl, library):
+    (library / 'b_Hoerspiel').mkdir()
+    (library / 'b_Hoerspiel' / '01.mp3').write_bytes(b'mp3')
+    (library / 'b_Hoerspiel' / 'cover.jpg').write_bytes(b'jpg')
+    (library / 'A_Lieder' / 'CD 1').mkdir(parents=True)
+    (library / '.hidden').mkdir()
+    assert ctrl.list_folders() == [
+        {'folder': 'A_Lieder', 'tracks': 0},
+        {'folder': 'A_Lieder/CD 1', 'tracks': 0},
+        {'folder': 'b_Hoerspiel', 'tracks': 1},
+    ]
 
 
 def test_start_import_validates(ctrl, library):
@@ -356,8 +449,7 @@ def test_import_chapters_and_tracks(ctrl, library):
     assert folder == 'Mein_Hoerspiel'
     # Each video is downloaded only once, also when several chapters are cut out of it
     assert downloads == ['https://y/book', 'https://y/song']
-    assert converts == [('01 - Kapitel 1.mp3', 0.0, 50.0), ('02 - Lied.mp3', None, None),
-                        ('03 - Kapitel 2.mp3', 50.0, 100.0)]
+    assert converts == [('0001.mp3', 0.0, 50.0), ('0002.mp3', None, None), ('0003.mp3', 50.0, 100.0)]
     assert sorted(os.listdir(library / 'Mein_Hoerspiel')) == ['01 - Kapitel 1.mp3', '02 - Lied.mp3',
                                                               '03 - Kapitel 2.mp3']
     # Tagged in the working directory, before the folder is moved into the library
@@ -529,6 +621,119 @@ def test_remote_id3_loads_only_the_tag(tmp_path):
     size = utils.id3_tag_size(data)
     assert requested == [(0, 9), (0, size - 1)]
     assert tags == {'title': 'Folge 1 | Podcast', 'artist': '', 'album': 'Podcast'}
+
+
+def make_folder(library, name, files):
+    folder = library / name
+    folder.mkdir()
+    for file in files:
+        (folder / file).write_bytes(b'old ' + file.encode())
+    return folder
+
+
+def test_import_appends_to_numbered_folder(ctrl, library):
+    folder = make_folder(library, 'Podcast', ['01 - Folge 1.mp3', '02 - Folge 2.mp3'])
+    fake_download(ctrl)
+    fake_convert(ctrl)
+    with mock.patch.object(utils, 'tag_mp3') as tag:
+        assert ctrl.start_import('Podcast', [{'url': 'https://y/3', 'title': 'Folge 3'}], artist='WDR',
+                                 album='Podcast', target='existing') == 'Podcast'
+        wait(ctrl)
+
+    assert ctrl._status['state'] == 'done'
+    assert ctrl._status['target'] == 'existing'
+    assert sorted(os.listdir(folder)) == ['01 - Folge 1.mp3', '02 - Folge 2.mp3', '03 - Folge 3.mp3']
+    # The old files are unchanged
+    assert (folder / '01 - Folge 1.mp3').read_bytes() == b'old 01 - Folge 1.mp3'
+    assert tag.call_args == mock.call(mock.ANY, 'Folge 3', 'WDR', 'Podcast', 3, None, b'cover')
+    ctrl.plugs_call.assert_called_once_with('player', 'ctrl', 'update')
+
+
+def test_import_sorts_into_unnumbered_folder(ctrl, library):
+    folder = make_folder(library, 'Lieder', ['Zebra.mp3', '01 - Anfang.mp3'])
+    fake_download(ctrl)
+    fake_convert(ctrl)
+    with mock.patch.object(utils, 'tag_mp3') as tag:
+        ctrl.start_import('Lieder', [{'url': 'https://y/1', 'title': 'Affe'}], target='existing')
+        wait(ctrl)
+
+    assert sorted(os.listdir(folder)) == ['01 - Anfang.mp3', 'Affe.mp3', 'Zebra.mp3']
+    assert tag.call_args == mock.call(mock.ANY, 'Affe', '', '', None, None, b'cover')
+
+
+def test_import_with_new_order_renames_the_folder(ctrl, library):
+    folder = make_folder(library, 'Lieder', ['Zebra.mp3', '01 - Anfang.mp3', 'cover.jpg'])
+    fake_download(ctrl, fail_urls=['https://y/broken'])
+    fake_convert(ctrl)
+    tracks = [
+        {'file': 'Zebra.mp3'},
+        {'url': 'https://y/broken', 'title': 'Kaputt'},
+        {'url': 'https://y/1', 'title': 'Affe'},
+        # '01 - Anfang.mp3' is missing: it keeps its place at the end
+    ]
+    with mock.patch.object(utils, 'tag_mp3') as tag, \
+            mock.patch.object(utils, 'set_track_number') as set_number, \
+            mock.patch.object(ytimport.plugs, 'call', return_value=[{'file': 'Anderer/1.mp3'}]) as call:
+        ctrl.start_import('Lieder', tracks, target='existing', reorder=True)
+        wait(ctrl)
+    # The old files get the track numbers of the new order
+    assert set_number.call_args_list == [mock.call(str(folder / '01 - Zebra.mp3'), 1, 3),
+                                         mock.call(str(folder / '03 - Anfang.mp3'), 3, 3)]
+
+    assert ctrl._status['state'] == 'done'
+    call.assert_called_once_with('player', 'ctrl', 'playlistinfo')
+    # The failed track leaves no gap
+    assert sorted(os.listdir(folder)) == ['01 - Zebra.mp3', '02 - Affe.mp3', '03 - Anfang.mp3', 'cover.jpg']
+    assert (folder / '01 - Zebra.mp3').read_bytes() == b'old Zebra.mp3'
+    assert (folder / '03 - Anfang.mp3').read_bytes() == b'old 01 - Anfang.mp3'
+    assert tag.call_args == mock.call(mock.ANY, 'Affe', '', '', 2, 3, b'cover')
+
+
+def test_import_with_new_order_refused_while_loaded(ctrl, library):
+    folder = make_folder(library, 'Lieder', ['Zebra.mp3', 'Affe.mp3'])
+    fake_download(ctrl)
+    fake_convert(ctrl)
+    tracks = [{'file': 'Zebra.mp3'}, {'file': 'Affe.mp3'}, {'url': 'https://y/1', 'title': 'Neu'}]
+    with mock.patch.object(utils, 'tag_mp3'), \
+            mock.patch.object(ytimport.plugs, 'call', return_value=[{'file': 'Lieder/Affe.mp3'}]):
+        ctrl.start_import('Lieder', tracks, target='existing', reorder=True)
+        wait(ctrl)
+
+    assert ctrl._status['state'] == 'error'
+    assert 'loaded in the player' in ctrl._status['error']
+    assert sorted(os.listdir(folder)) == ['Affe.mp3', 'Zebra.mp3']
+    assert os.listdir(ctrl._tmp_base) == []
+
+
+def test_start_import_existing_validates(ctrl, library):
+    make_folder(library, 'Lieder', ['Affe.mp3'])
+    with pytest.raises(FileNotFoundError):
+        ctrl.start_import('Gibt es nicht', [{'url': 'https://y/1', 'title': 'a'}], target='existing')
+    with pytest.raises(ValueError):
+        ctrl.start_import('Lieder', [{'file': 'Fremd.mp3'}, {'url': 'https://y/1', 'title': 'a'}],
+                          target='existing', reorder=True)
+    with pytest.raises(ValueError):
+        ctrl.start_import('Lieder', [{'file': 'Affe.mp3'}], target='existing', reorder=True)
+    with pytest.raises(ValueError):
+        ctrl.start_import('Lieder', [{'url': 'https://y/1', 'title': 'a'}], target='irgendwo')
+    assert ctrl._thread is None
+
+
+def test_reopen_after_import(ctrl, library):
+    with pytest.raises(ValueError):
+        ctrl.reopen()
+    info = {'kind': 'feed', 'title': 'Podcast', 'entries': []}
+    ctrl._status = {'state': 'info', 'url': 'https://example/feed.rss', 'info': info}
+    fake_download(ctrl)
+    fake_convert(ctrl)
+    with mock.patch.object(utils, 'tag_mp3'):
+        ctrl.start_import('Mein Podcast', [{'url': 'https://y/1', 'title': 'Folge 1'}])
+        wait(ctrl)
+    assert ctrl._status['url'] == 'https://example/feed.rss'
+
+    ctrl.reopen()
+    assert ctrl._status == {'state': 'info', 'url': 'https://example/feed.rss', 'info': info,
+                            'target_folder': 'Mein_Podcast'}
 
 
 def test_convert_copies_mp3(ctrl, tmp_path):

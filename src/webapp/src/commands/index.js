@@ -320,17 +320,27 @@ const commands = {
     method: 'fetch_info',
     argKeys: ['url'],
   },
-  ytimportCheckFolder: {
+  ytimportListFolders: {
     _package: 'ytimport',
     plugin: 'ctrl',
-    method: 'check_folder',
+    method: 'list_folders',
+  },
+  ytimportFolderInfo: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'folder_info',
     argKeys: ['name'],
   },
   ytimportStart: {
     _package: 'ytimport',
     plugin: 'ctrl',
     method: 'start_import',
-    argKeys: ['folder', 'tracks', 'artist', 'album', 'cover'],
+    argKeys: ['folder', 'tracks', 'artist', 'album', 'cover', 'target', 'reorder'],
+  },
+  ytimportReopen: {
+    _package: 'ytimport',
+    plugin: 'ctrl',
+    method: 'reopen',
   },
   ytimportCancel: {
     _package: 'ytimport',

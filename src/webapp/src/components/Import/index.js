@@ -64,7 +64,7 @@ const Import = () => {
               }
               {state === 'info' && status.info &&
                 <Grid item>
-                  <Editor key={status.info.url} info={status.info} />
+                  <Editor key={status.info.url} info={status.info} targetFolder={status.target_folder} />
                 </Grid>
               }
               {state === 'importing' &&

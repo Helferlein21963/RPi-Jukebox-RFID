@@ -145,9 +145,7 @@
       "loading": "Lade Infos …"
     },
     "editor": {
-      "folder": "Ordnername",
-      "folder-preview": "Wird gespeichert als: {{folder}}",
-      "folder-exists": "Den Ordner {{folder}} gibt es schon",
+      "folder": "Ordner",
       "folder-empty": "Bitte einen Ordnernamen eingeben",
       "artist": "Interpret",
       "album": "Album",
@@ -161,7 +159,16 @@
       "unavailable": "Nicht verfügbar",
       "move-up": "Nach oben",
       "move-down": "Nach unten",
-      "start": "Importieren ({{count}})"
+      "start": "Importieren ({{count}})",
+      "folder-new": "Neuer Ordner: {{folder}}",
+      "folder-create": "Neuer Ordner „{{folder}}“",
+      "folder-tracks": "{{count}} Titel",
+      "folder-existing-append": "Bestehender Ordner mit {{count}} Titeln – neue Titel kommen ans Ende",
+      "folder-existing-sorted": "Bestehender Ordner mit {{count}} Titeln – neue Titel werden alphabetisch einsortiert",
+      "folder-existing-reorder": "Bestehender Ordner mit {{count}} Titeln – Reihenfolge unten festlegen",
+      "reorder": "Reihenfolge selbst festlegen",
+      "reorder-hint": "Alle Dateien des Ordners werden in dieser Reihenfolge neu benannt (01 - …, 02 - …). Der Ordner beginnt danach wieder beim ersten Titel.",
+      "existing": "Schon im Ordner"
     },
     "progress": {
       "title": "Importiere nach {{folder}}",
@@ -179,7 +186,9 @@
       "new-import": "Neuer Import",
       "open-library": "Bibliothek",
       "assign-card": "Karte zuweisen",
-      "back": "Zurück"
+      "back": "Zurück",
+      "more": "Weitere Titel in diesen Ordner",
+      "retry": "Nochmal versuchen"
     },
     "tools": {
       "versions": "yt-dlp {{ytdlp}} · {{runtime}} {{version}}",

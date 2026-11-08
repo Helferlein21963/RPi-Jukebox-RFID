@@ -47,11 +47,30 @@ const formatDate = (date, language) => {
   return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString(language);
 };
 
-// What the core expects in 'start_import'
-const toImportTracks = (tracks) => (
+// The tracks to import, without the files of the folder
+const newTracks = (tracks) => tracks.filter((track) => !track.existing);
+
+// The files of an existing folder (in play order) before the new tracks, to set the order of the whole folder
+const mergeTracks = (existing, tracks) => [
+  ...(existing || []).map(({ file, title }) => ({
+    key: `file:${file}`,
+    file,
+    title,
+    existing: true,
+    available: true,
+    selected: true,
+  })),
+  ...newTracks(tracks),
+];
+
+// What the core expects in 'start_import'.
+// With 'reorder' the whole folder in the new order: {file} for a file that is in the folder already
+const toImportTracks = (tracks, reorder = false) => (
   tracks
-    .filter((track) => track.selected)
-    .map(({ url, title, start, end }) => ({ url, title, start, end }))
+    .filter((track) => track.selected && (reorder || !track.existing))
+    .map(({ file, existing, url, title, start, end }) => (
+      existing ? { file } : { url, title, start, end }
+    ))
 );
 
 const moveItem = (list, from, to) => {
@@ -67,6 +86,8 @@ export {
   chaptersOf,
   formatDate,
   isBusy,
+  mergeTracks,
   moveItem,
+  newTracks,
   toImportTracks,
 };

@@ -34,13 +34,28 @@ const info = {
   }],
 };
 
-beforeEach(() => {
+const newFolder = { folder: 'Max_uebernachtet', exists: false };
+
+const existingFolder = {
+  folder: 'Max_Hoerspiele',
+  exists: true,
+  numbered: false,
+  artist: 'Ordner-Interpret',
+  album: 'Ordner-Album',
+  tracks: [{ file: 'Alt.mp3', title: 'Alt' }],
+};
+
+// The core: 'folders' are listed, 'folderInfo' is the answer for the folder name
+const mockCore = ({ folderInfo = newFolder, start = { result: 'Max_uebernachtet' } } = {}) => {
   request.mockImplementation(async (command) => {
-    if (command === 'ytimportCheckFolder') return { result: { folder: 'Max_uebernachtet', exists: false } };
-    if (command === 'ytimportStart') return { result: 'Max_uebernachtet' };
+    if (command === 'ytimportListFolders') return { result: [{ folder: 'Max_Hoerspiele', tracks: 1 }] };
+    if (command === 'ytimportFolderInfo') return { result: folderInfo };
+    if (command === 'ytimportStart') return start;
     return { result: null };
   });
-});
+};
+
+beforeEach(() => mockCore());
 
 afterEach(() => jest.clearAllMocks());
 
@@ -51,7 +66,8 @@ test('splits chapters by default and imports the edited tracks', async () => {
 
   expect(screen.getByDisplayValue('Teil 1')).toBeInTheDocument();
   expect(screen.getByDisplayValue('Teil 2')).toBeInTheDocument();
-  await waitFor(() => expect(request).toHaveBeenCalledWith('ytimportCheckFolder', { name: 'Max übernachtet' }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith('ytimportFolderInfo', { name: 'Max übernachtet' }));
+  expect(await screen.findByText('import.editor.folder-new {"folder":"Max_uebernachtet"}')).toBeInTheDocument();
 
   fireEvent.change(screen.getByDisplayValue('Teil 2'), { target: { value: 'Das Ende' } });
   // Second track up
@@ -63,6 +79,8 @@ test('splits chapters by default and imports the edited tracks', async () => {
     artist: 'Erzähler',
     album: 'Max übernachtet',
     cover: true,
+    target: 'new',
+    reorder: false,
     tracks: [
       { url: 'https://www.youtube.com/watch?v=v', title: 'Das Ende', start: 100, end: 300 },
       { url: 'https://www.youtube.com/watch?v=v', title: 'Teil 1', start: 0, end: 100 },
@@ -79,11 +97,14 @@ test('the whole video as one track, deselected tracks are not imported', async (
 
   fireEvent.click(screen.getByRole('checkbox', { name: 'Max übernachtet' }));
   expect(startButton()).toBeDisabled();
+  // Folder list and folder info loaded
+  expect(await screen.findByText(/import\.editor\.folder-new/)).toBeInTheDocument();
 });
 
 test('reverses the order of the tracks', async () => {
   render(<Editor info={info} />);
 
+  expect(await screen.findByText(/import\.editor\.folder-new/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'import.editor.reverse' }));
   fireEvent.click(startButton());
 
@@ -95,25 +116,70 @@ test('reverses the order of the tracks', async () => {
   })));
 });
 
-test('an existing folder blocks the import', async () => {
-  request.mockImplementation(async (command) => (
-    command === 'ytimportCheckFolder'
-      ? { result: { folder: 'Max_uebernachtet', exists: true } }
-      : { result: null }
-  ));
-  render(<Editor info={info} />);
+test('adds to an existing folder, taking over its artist and album', async () => {
+  mockCore({ folderInfo: existingFolder });
+  render(<Editor info={info} targetFolder="Max_Hoerspiele" />);
 
-  expect(await screen.findByText(/import\.editor\.folder-exists/)).toBeInTheDocument();
-  expect(startButton()).toBeDisabled();
+  expect(await screen.findByText('import.editor.folder-existing-sorted {"count":1}')).toBeInTheDocument();
+  expect(screen.getByDisplayValue('Ordner-Interpret')).toBeInTheDocument();
+  expect(screen.getByDisplayValue('Ordner-Album')).toBeInTheDocument();
+  // The files of the folder are only listed when the order is set
+  expect(screen.queryByDisplayValue('Alt')).not.toBeInTheDocument();
+  fireEvent.click(startButton());
+
+  await waitFor(() => expect(request).toHaveBeenCalledWith('ytimportStart', expect.objectContaining({
+    folder: 'Max_Hoerspiele',
+    target: 'existing',
+    reorder: false,
+    artist: 'Ordner-Interpret',
+    tracks: [
+      { url: 'https://www.youtube.com/watch?v=v', title: 'Teil 1', start: 0, end: 100 },
+      { url: 'https://www.youtube.com/watch?v=v', title: 'Teil 2', start: 100, end: 300 },
+    ],
+  })));
+});
+
+test('sets the order of the whole existing folder', async () => {
+  mockCore({ folderInfo: existingFolder });
+  render(<Editor info={info} targetFolder="Max_Hoerspiele" />);
+
+  fireEvent.click(await screen.findByLabelText('import.editor.reorder'));
+  expect(screen.getByDisplayValue('Alt')).toBeInTheDocument();
+  expect(screen.getByText('import.editor.reorder-hint')).toBeInTheDocument();
+  // Only the new tracks count
+  expect(startButton()).toHaveTextContent('{"count":2}');
+  // The old file down, after the first new track
+  fireEvent.click(screen.getAllByRole('button', { name: 'import.editor.move-down' })[0]);
+  fireEvent.click(startButton());
+
+  await waitFor(() => expect(request).toHaveBeenCalledWith('ytimportStart', expect.objectContaining({
+    target: 'existing',
+    reorder: true,
+    tracks: [
+      { url: 'https://www.youtube.com/watch?v=v', title: 'Teil 1', start: 0, end: 100 },
+      { file: 'Alt.mp3' },
+      { url: 'https://www.youtube.com/watch?v=v', title: 'Teil 2', start: 100, end: 300 },
+    ],
+  })));
+});
+
+test('lists the folders and offers a new one', async () => {
+  render(<Editor info={info} />);
+  await waitFor(() => expect(request).toHaveBeenCalledWith('ytimportListFolders'));
+
+  const field = screen.getByRole('combobox', { name: 'import.editor.folder' });
+  fireEvent.change(field, { target: { value: 'max' } });
+  expect(await screen.findByText('Max_Hoerspiele')).toBeInTheDocument();
+  expect(screen.getByText('import.editor.folder-create {"folder":"max"}')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText('Max_Hoerspiele'));
+  expect(field).toHaveValue('Max_Hoerspiele');
 });
 
 test('shows the error of the core', async () => {
-  request.mockImplementation(async (command) => (
-    command === 'ytimportStart'
-      ? { error: 'Busy' }
-      : { result: { folder: 'Max_uebernachtet', exists: false } }
-  ));
+  mockCore({ start: { error: 'Busy' } });
   render(<Editor info={info} />);
+  expect(await screen.findByText(/import\.editor\.folder-new/)).toBeInTheDocument();
 
   fireEvent.click(startButton());
   expect(await screen.findByText('Busy')).toBeInTheDocument();

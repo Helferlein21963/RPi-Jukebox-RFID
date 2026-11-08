@@ -30,6 +30,8 @@ const Result = ({ status }) => {
   const folderPath = libraryPath ? `${libraryPath}/${folder}` : folder;
 
   const reset = () => request('ytimportReset');
+  // Back to the tracks of the same link, the folder used is preselected
+  const more = () => request('ytimportReopen');
 
   // Same as 'Assign card' in the library: play the folder
   const assignCard = () => {
@@ -52,6 +54,9 @@ const Result = ({ status }) => {
         }
         <Buttons>
           <Button onClick={reset}>{t('import.result.new-import')}</Button>
+          {status.url &&
+            <Button onClick={more}>{t('import.result.more')}</Button>
+          }
           <Button onClick={() => navigate(`/library/folders/${encodeURIComponent(folderPath)}`)}>
             {t('import.result.open-library')}
           </Button>
@@ -75,6 +80,9 @@ const Result = ({ status }) => {
       </Grid>
       <Buttons>
         <Button onClick={reset}>{t('import.result.back')}</Button>
+        {status.folder &&
+          <Button variant="contained" onClick={more}>{t('import.result.retry')}</Button>
+        }
       </Buttons>
     </Grid>
   );

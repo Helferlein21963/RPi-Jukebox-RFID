@@ -13,31 +13,50 @@ import {
 } from '@mui/material';
 
 import request from '../../utils/request';
+import FolderField from './folder-field';
 import TrackList from './track-list';
-import { buildTracks, chaptersOf, toImportTracks } from './utils';
+import {
+  buildTracks,
+  chaptersOf,
+  mergeTracks,
+  newTracks,
+  toImportTracks,
+} from './utils';
 
-const Editor = ({ info }) => {
+// Below the folder field: new folder, or what happens in the existing folder
+const folderHelp = (t, folderInfo, reorder) => {
+  if (!folderInfo.exists) return t('import.editor.folder-new', { folder: folderInfo.folder });
+  const count = folderInfo.tracks?.length || 0;
+  if (reorder) return t('import.editor.folder-existing-reorder', { count });
+  return folderInfo.numbered
+    ? t('import.editor.folder-existing-append', { count })
+    : t('import.editor.folder-existing-sorted', { count });
+};
+
+const Editor = ({ info, targetFolder }) => {
   const { t } = useTranslation();
 
   const chapterCount = chaptersOf(info).length;
   const hasChapters = chapterCount > 1;
 
-  const [folder, setFolder] = useState(info.title || info.folder);
-  const [folderCheck, setFolderCheck] = useState({ folder: info.folder, exists: false });
+  const [folder, setFolder] = useState(targetFolder || info.title || info.folder);
+  // Answer of the core for the folder name, null until it is there
+  const [folderInfo, setFolderInfo] = useState(null);
   const [artist, setArtist] = useState(info.uploader || '');
   const [album, setAlbum] = useState(info.title || '');
   const [splitChapters, setSplitChapters] = useState(hasChapters);
   const [cover, setCover] = useState(true);
+  const [reorder, setReorder] = useState(false);
   const [tracks, setTracks] = useState(buildTracks(info, hasChapters));
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState(null);
 
-  // The folder name as the core will create it (umlauts written out, no spaces), and whether it exists
+  // The folder as the core will use it: a new one (name cleaned) or an existing one with its files
   useEffect(() => {
     let isCurrent = true;
     const timer = setTimeout(async () => {
-      const { result } = await request('ytimportCheckFolder', { name: folder });
-      if (isCurrent && result) setFolderCheck(result);
+      const { result } = await request('ytimportFolderInfo', { name: folder });
+      if (isCurrent && result) setFolderInfo(result);
     }, 400);
     return () => {
       isCurrent = false;
@@ -45,25 +64,47 @@ const Editor = ({ info }) => {
     };
   }, [folder]);
 
+  const exists = !!folderInfo?.exists;
+
+  // Adding to an existing folder: keep its artist and album
+  useEffect(() => {
+    if (!exists) {
+      setReorder(false);
+      return;
+    }
+    if (folderInfo.artist) setArtist(folderInfo.artist);
+    if (folderInfo.album) setAlbum(folderInfo.album);
+  }, [exists, folderInfo?.folder]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The order of the whole folder: its files join the list of tracks
+  useEffect(() => {
+    setTracks((current) => (
+      reorder && exists ? mergeTracks(folderInfo.tracks, current) : newTracks(current)
+    ));
+  }, [reorder, exists, folderInfo]);
+
   const toggleChapters = (event) => {
     setSplitChapters(event.target.checked);
-    setTracks(buildTracks(info, event.target.checked));
+    const rebuilt = buildTracks(info, event.target.checked);
+    setTracks(reorder && exists ? mergeTracks(folderInfo.tracks, rebuilt) : rebuilt);
   };
 
-  const importTracks = toImportTracks(tracks);
-  const folderError = !folderCheck.folder
-    ? t('import.editor.folder-empty')
-    : (folderCheck.exists ? t('import.editor.folder-exists', { folder: folderCheck.folder }) : null);
+  const isReorder = reorder && exists;
+  const importTracks = toImportTracks(tracks, isReorder);
+  const newCount = toImportTracks(tracks).length;
+  const folderError = folderInfo && !folderInfo.folder ? t('import.editor.folder-empty') : null;
 
   const startImport = async () => {
     setIsStarting(true);
     setError(null);
     const { error } = await request('ytimportStart', {
-      folder,
+      folder: exists ? folderInfo.folder : folder,
       tracks: importTracks,
       artist,
       album,
       cover,
+      target: exists ? 'existing' : 'new',
+      reorder: isReorder,
     });
     // On success, the status changes to 'importing' and this editor disappears
     if (error) {
@@ -96,14 +137,11 @@ const Editor = ({ info }) => {
       </Grid>
 
       <Grid item>
-        <TextField
-          fullWidth
-          size="small"
-          label={t('import.editor.folder')}
+        <FolderField
           value={folder}
-          onChange={(event) => setFolder(event.target.value)}
+          onChange={setFolder}
           error={!!folderError}
-          helperText={folderError || t('import.editor.folder-preview', { folder: folderCheck.folder })}
+          helperText={folderError || (folderInfo ? folderHelp(t, folderInfo, isReorder) : ' ')}
         />
       </Grid>
       <Grid item>
@@ -140,6 +178,12 @@ const Editor = ({ info }) => {
           control={<Switch checked={cover} onChange={(event) => setCover(event.target.checked)} />}
           label={t('import.editor.cover')}
         />
+        {exists &&
+          <FormControlLabel
+            control={<Switch checked={reorder} onChange={(event) => setReorder(event.target.checked)} />}
+            label={t('import.editor.reorder')}
+          />
+        }
       </Grid>
 
       {info.truncated &&
@@ -147,6 +191,12 @@ const Editor = ({ info }) => {
           <Alert severity="info">
             {t('import.editor.truncated', { count: info.entries.length })}
           </Alert>
+        </Grid>
+      }
+
+      {isReorder &&
+        <Grid item>
+          <Alert severity="warning">{t('import.editor.reorder-hint')}</Alert>
         </Grid>
       }
 
@@ -170,10 +220,10 @@ const Editor = ({ info }) => {
           <Grid item>
             <Button
               variant="contained"
-              disabled={isStarting || !!folderError || importTracks.length === 0}
+              disabled={isStarting || !folderInfo || !!folderError || newCount === 0}
               onClick={startImport}
             >
-              {t('import.editor.start', { count: importTracks.length })}
+              {t('import.editor.start', { count: newCount })}
             </Button>
           </Grid>
         </Grid>

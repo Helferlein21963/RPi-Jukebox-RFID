@@ -6,8 +6,9 @@ for the web app, building the ffmpeg command line and writing the MP3 tags.
 import datetime
 import io
 import itertools
+import os
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from slugify import slugify
 
@@ -52,14 +53,88 @@ def safe_filename(title: str) -> str:
     return name or 'Track'
 
 
-def track_filename(number: int, title: str, width: int = 2) -> str:
+def track_filename(number: int, title: str, width: int = 2, extension: str = '.mp3') -> str:
     """
     File name of a track: ``01 - Title.mp3``.
 
     The number leads with zeros so that the alphabetical order (as used by the playlist generator) is the
     track order.
     """
-    return f'{number:0{width}d} - {safe_filename(title)}.mp3'
+    return f'{number:0{width}d} - {safe_filename(title)}{extension}'
+
+
+_NUMBER_RE = re.compile(r'^(\d+)')
+_NUMBER_PREFIX_RE = re.compile(r'^\d+(?:\s*[-_.)]+\s*|\s+)')
+
+
+def track_number(filename: str) -> Optional[int]:
+    """The number a file name starts with (``07 - Title.mp3`` → 7), None if it has none"""
+    match = _NUMBER_RE.match(filename)
+    return int(match.group(1)) if match else None
+
+
+def strip_number(stem: str) -> str:
+    """Title part of a file name without its leading number: ``07 - Title`` → ``Title``"""
+    stripped = _NUMBER_PREFIX_RE.sub('', stem, count=1).strip()
+    return stripped or stem
+
+
+def _unique_name(name: str, taken: set) -> str:
+    """``name``, or ``name (2)``, ``name (3)`` ... if it is taken already (case-insensitive)"""
+    stem, extension = os.path.splitext(name)
+    candidate = name
+    counter = 2
+    while candidate.casefold() in taken:
+        candidate = f'{stem} ({counter}){extension}'
+        counter += 1
+    taken.add(candidate.casefold())
+    return candidate
+
+
+def plan_append_names(existing_files: List[str], titles: List[str]) -> Tuple[List[str], bool]:
+    """
+    File names for new tracks added to an existing folder, fitting its naming.
+
+    A folder where every file starts with a number gets the next numbers (the new tracks play at the end).
+    Otherwise the new files get no number and sort alphabetically among the others, as the playlist
+    generator plays a folder in alphabetical order.
+
+    :param existing_files: File names in the folder
+    :param titles: Titles of the new tracks, in order
+    :return: ``(names, numbered)``
+    """
+    taken = {name.casefold() for name in existing_files}
+    numbers = [track_number(name) for name in existing_files]
+    # An empty folder is numbered from 01
+    numbered = all(number is not None for number in numbers)
+    if not numbered:
+        return [_unique_name(f'{safe_filename(title)}.mp3', taken) for title in titles], False
+
+    widths = [len(_NUMBER_RE.match(name).group(1)) for name in existing_files]
+    first = max(numbers, default=0) + 1
+    width = max([2, len(str(first + len(titles) - 1))] + widths)
+    names = [_unique_name(track_filename(first + idx, title, width), taken) for idx, title in enumerate(titles)]
+    return names, True
+
+
+def plan_reorder_names(items: List[dict]) -> List[str]:
+    """
+    New file names for a whole folder in the order the user chose: ``01 - Title.ext``, ``02 - ...``.
+
+    :param items: In the new order: ``{'file': name}`` for a file of the folder (keeps its extension, loses its
+        old number) or ``{'title': title}`` for a new track (MP3)
+    """
+    width = max(2, len(str(len(items))))
+    taken = set()
+    names = []
+    for idx, item in enumerate(items):
+        if item.get('file'):
+            stem, extension = os.path.splitext(item['file'])
+            title = strip_number(stem)
+        else:
+            title, extension = item['title'], '.mp3'
+        names.append(_unique_name(track_filename(idx + 1, title, width, extension), taken))
+    return names
 
 
 def clean_artist(name: Optional[str]) -> str:
@@ -196,13 +271,15 @@ def _optional_seconds(value) -> Optional[float]:
     return seconds
 
 
-def normalize_tracks(tracks) -> List[dict]:
+def normalize_tracks(tracks, allow_existing: bool = False) -> List[dict]:
     """
     Check the track list sent by the web app.
 
-    :param tracks: ``[{url, title, start?, end?}]`` in the order of the new folder. ``start``/``end``
+    :param tracks: ``[{url, title, start?, end?}]`` in the order of the folder. ``start``/``end``
         (seconds) cut a part (e.g. a chapter) out of the video
-    :return: Cleaned list ``[{url, title, start, end}]``
+    :param allow_existing: Also allow ``{file}``: a file that is in the folder already (the order of a whole
+        folder is set)
+    :return: Cleaned list ``[{url, title, start, end}]`` (and ``{file}``)
     :raises ValueError: On a broken entry
     """
     if not isinstance(tracks, (list, tuple)):
@@ -211,6 +288,12 @@ def normalize_tracks(tracks) -> List[dict]:
     for track in tracks:
         if not isinstance(track, dict):
             raise ValueError(f'Invalid track: {track!r}')
+        if allow_existing and track.get('file'):
+            name = str(track['file'])
+            if name != os.path.basename(name) or name in ('.', '..') or '\\' in name:
+                raise ValueError(f'Invalid file name: {name!r}')
+            result.append({'file': name})
+            continue
         url = str(track.get('url') or '').strip()
         if not url.startswith(('http://', 'https://')):
             raise ValueError(f'Invalid link: {url!r}')
@@ -331,6 +414,43 @@ def id3_summary(data: bytes) -> dict:
         if frame in tags:
             result[key] = re.sub(r'\s+', ' ', str(tags[frame])).strip()
     return result
+
+
+def set_track_number(path: str, number: int, total: int) -> None:
+    """Set the track number (``3/12``) of an MP3 file, the other tags stay (also their ID3 version)"""
+    from mutagen.id3 import ID3, ID3NoHeaderError, TRCK
+
+    try:
+        tags = ID3(path)
+        version = 3 if tags.version[:2] == (2, 3) else 4
+    except ID3NoHeaderError:
+        tags, version = ID3(), 3
+    tags.setall('TRCK', [TRCK(encoding=3, text=f'{number}/{total}')])
+    tags.save(path, v2_version=version)
+
+
+def file_tags(path: str) -> dict:
+    """
+    Artist (album artist preferred) and album of an MP3 file, e.g. to keep them when adding tracks to a folder
+
+    :return: ``{'artist', 'album'}``, empty strings for what is missing
+    """
+    from mutagen.id3 import ID3, ID3NoHeaderError
+    from mutagen import MutagenError
+
+    try:
+        tags = ID3(path)
+    except (ID3NoHeaderError, MutagenError, OSError):
+        return {'artist': '', 'album': ''}
+
+    def text(*frames):
+        for frame in frames:
+            value = str(tags[frame]).strip() if frame in tags else ''
+            if value:
+                return value
+        return ''
+
+    return {'artist': text('TPE2', 'TPE1'), 'album': text('TALB')}
 
 
 def embedded_cover(path: str) -> Optional[bytes]:

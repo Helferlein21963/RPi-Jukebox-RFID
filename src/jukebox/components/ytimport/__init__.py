@@ -44,10 +44,11 @@ import tempfile
 import threading
 import time
 import urllib.request
-from typing import Optional
+from typing import Optional, Tuple
 
 import components.player
 import jukebox.cfghandler
+import jukebox.playlistgenerator as playlistgenerator
 import jukebox.plugs as plugs
 import jukebox.publishing
 import misc
@@ -72,6 +73,9 @@ THUMBNAIL_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
 #: which is loaded up to this size (a tag with a large cover has about 1 MB)
 REMOTE_ID3_MAX_SIZE = 2 * 1024 * 1024
 REMOTE_ID3_TIMEOUT = 15
+
+#: At most this many folders are listed to choose from
+MAX_FOLDERS = 2000
 
 
 def _is_mp3(path: str) -> bool:
@@ -131,6 +135,8 @@ class YtImport:
         self._status = {'state': 'idle'}
         self._last_publish = 0.0
         self._versions: Optional[dict] = None
+        # Info of the last import ({url, info, folder}), to add more tracks of the same link (reopen)
+        self._last_info: Optional[dict] = None
         # Left over from an import that was interrupted by a shutdown
         for job_dir in glob.glob(os.path.join(self._tmp_base, 'job_*')):
             shutil.rmtree(job_dir, ignore_errors=True)
@@ -163,30 +169,29 @@ class YtImport:
     def _is_busy(self):
         return self._thread is not None and self._thread.is_alive()
 
-    def _start_job(self, state, target, *args, **status):
-        """Set the new status and start ``target`` in a worker thread"""
+    def _start_job(self, state, job, *args, **status):
+        """Set the new status and start ``job`` in a worker thread"""
         with self._lock:
             if self._is_busy():
                 raise RuntimeError(f"Busy: '{self._status.get('state')}' is running")
             self._cancel.clear()
             self._new_status(state, **status)
-            self._thread = threading.Thread(target=self._run_job, args=(target, *args), name='YtImport', daemon=True)
+            self._thread = threading.Thread(target=self._run_job, args=(job, *args), name='YtImport', daemon=True)
             self._thread.start()
 
-    def _run_job(self, target, *args):
+    def _run_job(self, job, *args):
         _lower_priority(self._nice)
         try:
-            target(*args)
-        except ImportCancelled:
-            logger.info('Cancelled')
-            self._new_status('cancelled')
+            job(*args)
         except Exception as e:
-            if self._cancel.is_set():
+            # The folder of an import: it can be tried again with reopen
+            keep = {key: self._status[key] for key in ('url', 'folder') if self._status.get(key)}
+            if isinstance(e, ImportCancelled) or self._cancel.is_set():
                 logger.info('Cancelled')
-                self._new_status('cancelled')
+                self._new_status('cancelled', **keep)
             else:
                 logger.error(f"{self._status.get('state')} failed: {e.__class__.__name__}: {e}")
-                self._new_status('error', error=str(e), url=self._status.get('url'))
+                self._new_status('error', error=str(e), **keep)
 
     def _check_cancel(self):
         if self._cancel.is_set():
@@ -199,7 +204,8 @@ class YtImport:
 
             {'state': 'idle' | 'fetching' | 'info' | 'importing' | 'done' | 'cancelled' | 'error' | 'updating'
                       | 'updated',
-             'url': ..., 'info': {...} (state 'info', see utils.build_info),
+             'url': ..., 'info': {...} (state 'info', see utils.build_info), 'target_folder': ... (after reopen),
+             'target': 'new' | 'existing',
              'folder': ..., 'current': 1, 'total': 12, 'track_title': ..., 'phase': 'download' | 'convert',
              'percent': 42.0, 'failed': [{'title': ..., 'error': ...}], 'error': ..., 'output': ...}
         """
@@ -396,6 +402,7 @@ class YtImport:
         return os.path.abspath(os.path.expanduser(components.player.get_music_library_path()))
 
     def _target_folder(self, name):
+        """Name and path of a new folder (directly in the music library)"""
         folder = utils.sanitize_folder(name)
         if not folder:
             raise ValueError('Please enter a folder name')
@@ -405,75 +412,198 @@ class YtImport:
             raise ValueError(f"Invalid folder name: '{name}'")
         return folder, target
 
-    @plugs.tag
-    def check_folder(self, name: str) -> dict:
+    def _existing_folder(self, name) -> Optional[Tuple[str, str]]:
         """
-        Folder name as it will be created and whether it exists already
+        ``(folder, path)`` of an existing folder of the music library, None if there is none of that name.
 
-        :return: ``{'folder': 'Max_uebernachtet_bei_Oma', 'exists': False}``
+        ``name`` is a path relative to the library as listed by :meth:`list_folders`, or a name that becomes
+        the name of an existing folder when it is cleaned (``Max übernachtet`` → ``Max_uebernachtet``).
         """
-        folder = utils.sanitize_folder(name)
-        if not folder:
-            return {'folder': '', 'exists': False}
-        return {'folder': folder, 'exists': os.path.exists(os.path.join(self._library_path(), folder))}
+        name = str(name or '').strip().strip('/')
+        library = self._library_path()
+        for candidate in dict.fromkeys([name, utils.sanitize_folder(name)]):
+            if not candidate:
+                continue
+            path = os.path.abspath(os.path.join(library, candidate))
+            if os.path.commonpath([library, path]) == library and path != library and os.path.isdir(path):
+                return os.path.relpath(path, library).replace(os.sep, '/'), path
+        return None
+
+    def _folder_files(self, folder) -> list:
+        """Playable files of a folder in the order the player plays them (as the playlist generator sorts)"""
+        collector = playlistgenerator.PlaylistCollector(self._library_path())
+        collector.get_directory_content(folder)
+        return [entry['name'] for entry in collector.playlist if entry['type'] == 'file']
 
     @plugs.tag
-    def start_import(self, folder: str, tracks: list, artist: str = '', album: str = '', cover: bool = True) -> str:
+    def list_folders(self) -> list:
+        """
+        Folders of the music library (to add tracks to), sorted like the library::
+
+            [{'folder': 'Max_uebernachtet', 'tracks': 12}, ...]
+        """
+        library = self._library_path()
+        result = []
+        for root, dirs, files in os.walk(library, followlinks=True):
+            dirs[:] = sorted((d for d in dirs if not d.startswith('.')), key=str.casefold)
+            if root == library:
+                continue
+            tracks = sum(1 for entry in os.scandir(root) if playlistgenerator.PlaylistCollector._is_valid(entry))
+            result.append({'folder': os.path.relpath(root, library).replace(os.sep, '/'), 'tracks': tracks})
+            if len(result) >= MAX_FOLDERS:
+                break
+        return sorted(result, key=lambda entry: entry['folder'].casefold())
+
+    @plugs.tag
+    def folder_info(self, name: str) -> dict:
+        """
+        What happens with the folder name the user entered.
+
+        A new folder (created directly in the music library)::
+
+            {'folder': 'Max_uebernachtet_bei_Oma', 'exists': False}
+
+        An existing folder (the tracks are added to it)::
+
+            {'folder': 'Max_uebernachtet', 'exists': True, 'numbered': True, 'artist': ..., 'album': ...,
+             'tracks': [{'file': '01 - Kapitel 1.mp3', 'title': 'Kapitel 1'}, ...]}
+
+        ``tracks`` are in the order they are played; ``numbered``: all files start with a number, new tracks
+        get the next numbers (else they sort in alphabetically). Artist and album are those of the first MP3.
+        """
+        existing = self._existing_folder(name)
+        if existing is None:
+            return {'folder': utils.sanitize_folder(name), 'exists': False}
+        folder, path = existing
+        files = self._folder_files(folder)
+        # Of the first MP3 with tags (a few files only: a folder without tags is not read completely)
+        mp3s = [f for f in files if f.lower().endswith('.mp3')][:5]
+        tags = next((t for t in (utils.file_tags(os.path.join(path, f)) for f in mp3s) if t['artist'] or t['album']),
+                    {'artist': '', 'album': ''})
+        return {
+            'folder': folder,
+            'exists': True,
+            'numbered': all(utils.track_number(f) is not None for f in files),
+            'artist': tags['artist'],
+            'album': tags['album'],
+            'tracks': [{'file': f, 'title': utils.strip_number(os.path.splitext(f)[0])} for f in files],
+        }
+
+    @plugs.tag
+    def start_import(self, folder: str, tracks: list, artist: str = '', album: str = '', cover: bool = True,
+                     target: str = 'new', reorder: bool = False) -> str:
         """
         Start the import in the background. Result: state 'done' (or 'error' / 'cancelled')
 
-        :param folder: Name of the new folder in the music library (is cleaned, see utils.sanitize_folder).
-            The folder must not exist yet
+        :param folder: Name of the new folder in the music library (is cleaned, see utils.sanitize_folder), or
+            of an existing folder (``target='existing'``)
         :param tracks: ``[{url, title, start?, end?}]`` in the order of the folder; ``start``/``end`` in
-            seconds cut a part (chapter) out of the video
+            seconds cut a part (chapter) out of the video. With ``reorder`` the whole folder in the new order:
+            ``{file}`` stands for a file that is in the folder already
         :param artist: Artist (and album artist) of all tracks
         :param album: Album of all tracks
         :param cover: Embed the thumbnail as cover
-        :return: The folder name that is created
+        :param target: ``new``: create the folder, it must not exist yet. ``existing``: add the tracks to an
+            existing folder, named to fit it (see utils.plan_append_names)
+        :param reorder: Only with ``existing``: rename all files of the folder to ``01 - ...`` in the order of
+            ``tracks``. Files of the folder missing in ``tracks`` keep their order at the end
+        :return: The folder name
         """
-        folder_name, target = self._target_folder(folder)
-        if os.path.exists(target):
-            raise FileExistsError(f"Folder '{folder_name}' exists already")
-        tracks = utils.normalize_tracks(tracks)
-        if not tracks:
+        reorder = bool(reorder) and target == 'existing'
+        if target == 'existing':
+            existing = self._existing_folder(folder)
+            if existing is None:
+                raise FileNotFoundError(f"Folder '{folder}' does not exist")
+            folder_name, path = existing
+        elif target == 'new':
+            folder_name, path = self._target_folder(folder)
+            if os.path.exists(path):
+                raise FileExistsError(f"Folder '{folder_name}' exists already")
+        else:
+            raise ValueError(f"Invalid target: '{target}'")
+
+        tracks = utils.normalize_tracks(tracks, allow_existing=reorder)
+        if reorder:
+            tracks = self._complete_order(folder_name, tracks)
+        new_count = sum(1 for track in tracks if 'url' in track)
+        if not new_count:
             raise ValueError('No tracks selected')
-        artist = str(artist or '').strip()
-        album = str(album or '').strip()
-        self._start_job('importing', self._job_import, folder_name, target, tracks, artist, album, bool(cover),
-                        folder=folder_name, current=0, total=len(tracks), track_title='', phase='download',
-                        percent=0, failed=[])
+        options = {
+            'artist': str(artist or '').strip(),
+            'album': str(album or '').strip(),
+            'cover': bool(cover),
+            'target': target,
+            'reorder': reorder,
+        }
+        with self._lock:
+            if self._status.get('state') == 'info':
+                self._last_info = {'url': self._status.get('url'), 'info': self._status.get('info')}
+            if self._last_info is not None:
+                self._last_info['folder'] = folder_name
+            url = (self._last_info or {}).get('url')
+        self._start_job('importing', self._job_import, folder_name, path, tracks, options,
+                        folder=folder_name, url=url, target=target, current=0, total=new_count, track_title='',
+                        phase='download', percent=0, failed=[])
         return folder_name
 
-    def _job_import(self, folder_name, target, tracks, artist, album, cover):
+    def _complete_order(self, folder, tracks):
+        """The whole folder in the new order: checks the named files, adds the missing ones at the end"""
+        files = self._folder_files(folder)
+        named = [track['file'] for track in tracks if 'file' in track]
+        unknown = sorted(set(named) - set(files))
+        if unknown:
+            raise ValueError(f"Not in folder '{folder}': {', '.join(unknown)}")
+        if len(named) != len(set(named)):
+            raise ValueError('A file is listed twice')
+        return tracks + [{'file': f} for f in files if f not in named]
+
+    @plugs.tag
+    def reopen(self) -> None:
+        """
+        Back to the info of the last import (state 'info'), e.g. to add more episodes of a podcast to the same
+        folder without loading the link again. ``target_folder`` in the status is the folder used last
+        """
+        with self._lock:
+            if self._is_busy():
+                raise RuntimeError(f"Busy: '{self._status.get('state')}' is running")
+            if not self._last_info or not self._last_info.get('info'):
+                raise ValueError('Nothing to continue: load a link first')
+            self._new_status('info', url=self._last_info['url'], info=self._last_info['info'],
+                             target_folder=self._last_info.get('folder'))
+
+    def _job_import(self, folder_name, path, tracks, options):
         os.makedirs(self._tmp_base, exist_ok=True)
         job_dir = tempfile.mkdtemp(prefix='job_', dir=self._tmp_base)
         try:
-            self._import_tracks(job_dir, folder_name, target, tracks, artist, album, cover)
+            self._import_tracks(job_dir, folder_name, path, tracks, options)
         finally:
             shutil.rmtree(job_dir, ignore_errors=True)
 
-    def _import_tracks(self, job_dir, folder_name, target, tracks, artist, album, cover):
+    def _import_tracks(self, job_dir, folder_name, path, tracks, options):
         src_dir = os.path.join(job_dir, 'src')
-        out_dir = os.path.join(job_dir, folder_name)
+        out_dir = os.path.join(job_dir, 'out')
         os.makedirs(src_dir)
         os.makedirs(out_dir)
-        total = len(tracks)
-        width = max(2, len(str(total)))
+        new_tracks = [track for track in tracks if 'url' in track]
+        total = len(new_tracks)
         # Index of the last track that needs a download: delete it afterwards to save space
-        last_use = {track['url']: idx for idx, track in enumerate(tracks)}
+        last_use = {track['url']: idx for idx, track in enumerate(new_tracks)}
         sources = {}
         failed = []
-        logger.info(f"Import of {total} tracks into '{folder_name}'")
+        logger.info(f"Import of {total} tracks into '{folder_name}' ({options['target']}"
+                    f"{', new order' if options['reorder'] else ''})")
 
-        for idx, track in enumerate(tracks):
+        for idx, track in enumerate(new_tracks):
             self._check_cancel()
             number = idx + 1
             self._set_status(force=True, current=number, track_title=track['title'], phase='download', percent=0)
             try:
                 if track['url'] not in sources:
-                    sources[track['url']] = self._download(track['url'], src_dir, number, cover)
-                destination = os.path.join(out_dir, utils.track_filename(number, track['title'], width))
-                self._import_track(sources[track['url']], destination, track, artist, album, number, total)
+                    sources[track['url']] = self._download(track['url'], src_dir, number, options['cover'])
+                source = sources[track['url']]
+                self._import_track(source, os.path.join(out_dir, f'{number:04d}.mp3'), track)
+                track['converted'] = os.path.join(out_dir, f'{number:04d}.mp3')
+                track['cover'] = source.get('cover')
             except ImportCancelled:
                 raise
             except Exception as e:
@@ -488,22 +618,119 @@ class YtImport:
         if len(failed) == total:
             raise RuntimeError(f"No track could be imported: {failed[0]['error']}")
         self._check_cancel()
-        self._finish(folder_name, out_dir, target)
+        # Failed tracks leave no gap in the numbering
+        items = [track for track in tracks if 'file' in track or 'converted' in track]
+        new_files, renames = self._name_tracks(folder_name, items, out_dir, options)
+        if options['target'] == 'new':
+            self._finish(folder_name, out_dir, path)
+        else:
+            self._finish_existing(folder_name, out_dir, path, new_files, renames)
         logger.info(f"Import into '{folder_name}' done ({total - len(failed)} of {total} tracks)")
-        self._new_status('done', folder=folder_name, total=total, imported=total - len(failed), failed=failed)
+        self._new_status('done', folder=folder_name, url=self._status.get('url'), target=options['target'],
+                         total=total, imported=total - len(failed), failed=failed)
 
-    def _import_track(self, source, destination, track, artist, album, number, total):
-        """Convert (or cut out) one track and write its tags"""
+    def _name_tracks(self, folder_name, items, out_dir, options):
+        """
+        Give the converted tracks their file names and tags
+
+        :return: ``(new_files, renames)``: names of the new files, ``[(old, new, number, total)]`` for the files
+            of the folder
+        """
+        new_items = [item for item in items if 'converted' in item]
+        if options['reorder']:
+            names = utils.plan_reorder_names(items)
+            positions = {id(item): idx for idx, item in enumerate(items)}
+            numbers = [(positions[id(item)] + 1, len(items)) for item in new_items]
+            new_names = [names[positions[id(item)]] for item in new_items]
+            renames = [(item['file'], name, idx + 1, len(items))
+                       for idx, (item, name) in enumerate(zip(items, names)) if 'file' in item]
+        elif options['target'] == 'existing':
+            new_names, numbered = utils.plan_append_names(self._folder_files(folder_name),
+                                                          [item['title'] for item in new_items])
+            numbers = [(utils.track_number(name), None) if numbered else (None, None) for name in new_names]
+            renames = []
+        else:
+            width = max(2, len(str(len(new_items))))
+            new_names = [utils.track_filename(idx + 1, item['title'], width) for idx, item in enumerate(new_items)]
+            numbers = [(idx + 1, len(new_items)) for idx in range(len(new_items))]
+            renames = []
+
+        for item, name, (number, total) in zip(new_items, new_names, numbers):
+            destination = os.path.join(out_dir, name)
+            os.rename(item['converted'], destination)
+            utils.tag_mp3(destination, item['title'], options['artist'], options['album'], number, total,
+                          item.get('cover'))
+        return new_names, renames
+
+    def _import_track(self, source, destination, track):
+        """Convert (or cut out) one track"""
         self._check_cancel()
         self._set_status(force=True, phase='convert', percent=0)
         self._convert(source, destination, track['start'], track['end'])
-        utils.tag_mp3(destination, track['title'], artist, album, number, total, source.get('cover'))
 
     def _finish(self, folder_name, out_dir, target):
         """Move the finished folder into the library, set the permissions, update the MPD database"""
         if os.path.exists(target):
             raise FileExistsError(f"Folder '{folder_name}' exists already")
         shutil.move(out_dir, target)
+        self._set_permissions(target)
+        # Not update_wait: that would block all other plugin calls (e.g. cards) while MPD scans
+        plugs.call_ignore_errors('player', 'ctrl', 'update')
+
+    def _finish_existing(self, folder_name, out_dir, target, new_files, renames):
+        """
+        Add the new files to an existing folder and rename its files to the new order. Renaming goes over
+        temporary names, so that no file overwrites another when names are swapped
+        """
+        if not os.path.isdir(target):
+            raise FileNotFoundError(f"Folder '{folder_name}' does not exist any more")
+        changed = [(old, new) for old, new, _, _ in renames if old != new]
+        if changed:
+            self._check_not_loaded(folder_name)
+        for name in new_files:
+            if os.path.exists(os.path.join(target, name)) and name not in {old for old, _ in changed}:
+                raise FileExistsError(f"'{name}' exists already in '{folder_name}'")
+        temporary = []
+        for idx, (old, new) in enumerate(changed):
+            temp = f'.ytimport_{idx}{os.path.splitext(old)[1]}'
+            os.rename(os.path.join(target, old), os.path.join(target, temp))
+            temporary.append((temp, new))
+        for temp, new in temporary:
+            os.rename(os.path.join(target, temp), os.path.join(target, new))
+        for name in new_files:
+            shutil.move(os.path.join(out_dir, name), os.path.join(target, name))
+        self._renumber(target, renames)
+        if changed:
+            logger.info(f"Renamed {len(changed)} files of '{folder_name}' to the new order")
+        self._set_permissions(target)
+        plugs.call_ignore_errors('player', 'ctrl', 'update')
+
+    @staticmethod
+    def _renumber(target, renames):
+        """The track numbers of the files of the folder follow the new order (the library sorts albums by them)"""
+        for _, name, number, total in renames:
+            if not name.lower().endswith('.mp3'):
+                continue
+            try:
+                utils.set_track_number(os.path.join(target, name), number, total)
+            except Exception as e:
+                logger.warning(f"Could not set the track number of '{name}': {e}")
+
+    @staticmethod
+    def _check_not_loaded(folder_name):
+        """Files can't be renamed while the player has them in its queue (it would stop finding them)"""
+        try:
+            queue = plugs.call('player', 'ctrl', 'playlistinfo') or []
+        except Exception as e:
+            logger.warning(f"Could not check the queue of the player: {e}")
+            return
+        prefix = folder_name.rstrip('/') + '/'
+        if any(str(song.get('file', '')).startswith(prefix) for song in queue):
+            raise RuntimeError(f"'{folder_name}' is loaded in the player: play something else first "
+                               "or clear the queue, then import again")
+
+    @staticmethod
+    def _set_permissions(target):
         with cfg:
             check_user_rights = cfg.getn('playermpd', 'library', 'check_user_rights', default=True)
         if check_user_rights is True:
@@ -511,8 +738,6 @@ class YtImport:
                 misc.recursive_chmod(target, mode_files=0o666, mode_dirs=0o777)
             except OSError as e:
                 logger.warning(f"Could not set permissions of '{target}': {e}")
-        # Not update_wait: that would block all other plugin calls (e.g. cards) while MPD scans
-        plugs.call_ignore_errors('player', 'ctrl', 'update')
 
     def _progress_hook(self, data):
         if self._cancel.is_set():

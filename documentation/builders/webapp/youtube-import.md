@@ -33,7 +33,24 @@ Everything a podcast app can play can be imported:
 MP3 episodes are copied, not converted again: this is fast (seconds instead of minutes on a Raspberry Pi)
 and keeps the quality. The image of the episode, or else the cover in the file, becomes the cover.
 
-There is no subscription yet: new episodes are imported by hand.
+There is no subscription yet: new episodes are imported by hand. After an import, *More tracks into this
+folder* goes back to the list of the same link with the folder preselected.
+
+## Existing folders
+
+The field *Folder* lists the folders of the music library (type to search). Pick one to add the tracks to
+it, or type a new name: *New folder* creates it directly in the music library. When adding to a folder,
+artist and album are taken from its files.
+
+The Phoniebox plays a folder in alphabetical order of the file names, so new tracks are named to fit:
+
+* If every file starts with a number (`01 - …`), the new tracks get the next numbers and play at the end.
+* Otherwise they get no number and sort in alphabetically. The files already in the folder stay as they are.
+
+To decide the order yourself, switch on *Set the order myself*: all tracks of the folder are listed with
+the new ones and can be moved. On import, **all files of the folder are renamed** to `01 - …`, `02 - …` in
+that order. The remembered position of the folder is lost, it starts again with the first track. This is
+refused while the folder is loaded in the player: play something else first.
 
 ## Requirements
 

@@ -1,4 +1,12 @@
-import { buildTracks, chaptersOf, formatDate, isBusy, moveItem, toImportTracks } from './utils';
+import {
+  buildTracks,
+  chaptersOf,
+  formatDate,
+  isBusy,
+  mergeTracks,
+  moveItem,
+  toImportTracks,
+} from './utils';
 
 const video = {
   kind: 'video',
@@ -55,6 +63,24 @@ describe('import track list', () => {
       ['Folge 1', null, false],
     ]);
     expect(toImportTracks(tracks)).toEqual([]);
+  });
+
+  test('the files of an existing folder join the list to set the order', () => {
+    const tracks = mergeTracks([{ file: '01 - Alt.mp3', title: 'Alt' }], buildTracks(playlist, false));
+    expect(tracks.map((track) => [track.title, !!track.existing, track.selected])).toEqual([
+      ['Alt', true, true],
+      ['A', false, true],
+      ['[Private video]', false, false],
+    ]);
+    const reordered = moveItem(tracks, 0, 1);
+    expect(toImportTracks(reordered, true)).toEqual([
+      { url: 'https://y/1', title: 'A', start: null, end: null },
+      { file: '01 - Alt.mp3' },
+    ]);
+    // Without the new order only the new tracks
+    expect(toImportTracks(reordered)).toEqual([{ url: 'https://y/1', title: 'A', start: null, end: null }]);
+    // Merging again does not add the files twice
+    expect(mergeTracks([{ file: '01 - Alt.mp3', title: 'Alt' }], tracks)).toHaveLength(3);
   });
 
   test('formatDate', () => {

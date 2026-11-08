@@ -145,9 +145,7 @@
       "loading": "Loading info …"
     },
     "editor": {
-      "folder": "Folder name",
-      "folder-preview": "Saved as: {{folder}}",
-      "folder-exists": "The folder {{folder}} exists already",
+      "folder": "Folder",
       "folder-empty": "Please enter a folder name",
       "artist": "Artist",
       "album": "Album",
@@ -161,7 +159,16 @@
       "unavailable": "Not available",
       "move-up": "Move up",
       "move-down": "Move down",
-      "start": "Import ({{count}})"
+      "start": "Import ({{count}})",
+      "folder-new": "New folder: {{folder}}",
+      "folder-create": "New folder \"{{folder}}\"",
+      "folder-tracks": "{{count}} tracks",
+      "folder-existing-append": "Existing folder with {{count}} tracks – new tracks are added at the end",
+      "folder-existing-sorted": "Existing folder with {{count}} tracks – new tracks are sorted in alphabetically",
+      "folder-existing-reorder": "Existing folder with {{count}} tracks – set the order below",
+      "reorder": "Set the order myself",
+      "reorder-hint": "All files of the folder are renamed in this order (01 - …, 02 - …). The folder then starts again with the first track.",
+      "existing": "Already in the folder"
     },
     "progress": {
       "title": "Importing into {{folder}}",
@@ -179,7 +186,9 @@
       "new-import": "New import",
       "open-library": "Library",
       "assign-card": "Assign card",
-      "back": "Back"
+      "back": "Back",
+      "more": "More tracks into this folder",
+      "retry": "Try again"
     },
     "tools": {
       "versions": "yt-dlp {{ytdlp}} · {{runtime}} {{version}}",
