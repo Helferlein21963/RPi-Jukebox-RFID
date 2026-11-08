@@ -1,13 +1,16 @@
 """
-Import audio from YouTube (and other sites supported by yt-dlp) into the music library.
+Import audio from YouTube (and other sites supported by yt-dlp), podcast feeds and direct links to audio
+files into the music library.
 
 Workflow (driven by the web app, page *Import*):
 
 1. :meth:`YtImport.fetch_info` loads the metadata of a link: title, channel, playlist entries, chapters.
+   A podcast feed (RSS) is listed like a playlist, with the date of each episode.
 2. The user edits folder name, artist, album, titles and order, and can split a video into its chapters.
 3. :meth:`YtImport.start_import` downloads every track with yt-dlp, converts it to MP3 with ffmpeg (or cuts
-   the chapter out), writes the tags (title, artist, album, track number, thumbnail as cover) and moves the
-   finished folder into the music library. Then the MPD database is updated.
+   the chapter out; MP3 sources are copied, not encoded again), writes the tags (title, artist, album, track
+   number, thumbnail or the cover of the source as cover) and moves the finished folder into the music
+   library. Then the MPD database is updated.
 
 RPC calls and ``plugs.call`` are processed one after another, so everything that takes longer runs in a
 worker thread and the RPC call returns immediately. The progress is published on the topic
@@ -40,6 +43,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.request
 from typing import Optional
 
 import components.player
@@ -63,6 +67,15 @@ PIP_PACKAGES = ['yt-dlp[default]', 'mutagen']
 BUSY_STATES = ('fetching', 'importing', 'updating')
 
 THUMBNAIL_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
+
+#: A direct link to an audio file names no title: it is read from the ID3 tag at the start of the file,
+#: which is loaded up to this size (a tag with a large cover has about 1 MB)
+REMOTE_ID3_MAX_SIZE = 2 * 1024 * 1024
+REMOTE_ID3_TIMEOUT = 15
+
+
+def _is_mp3(path: str) -> bool:
+    return path.lower().endswith('.mp3')
 
 
 class ImportCancelled(Exception):
@@ -311,7 +324,8 @@ class YtImport:
         """
         Load the metadata of a link in the background. Result: state 'info' with ``info`` in the status
 
-        :param url: Link to a video or a playlist (YouTube, YouTube Music, or any site yt-dlp supports)
+        :param url: Link to a video or a playlist (YouTube, YouTube Music, or any site yt-dlp supports), to a
+            podcast feed (RSS) or directly to an audio file (e.g. an MP3 of a podcast episode)
         """
         url = str(url or '').strip()
         if not url.startswith(('http://', 'https://')):
@@ -332,10 +346,46 @@ class YtImport:
                 raise RuntimeError('No information found for this link')
             info = utils.build_info(raw, url, self._max_entries)
         self._check_cancel()
+        if raw.get('direct') and info['kind'] == 'video':
+            self._add_file_tags(info)
+            self._check_cancel()
         if not info['entries']:
             raise RuntimeError('No playable entries found')
         logger.info(f"Info loaded: {info['kind']} '{info['title']}' with {len(info['entries'])} entries")
         self._new_status('info', url=url, info=info)
+
+    def _add_file_tags(self, info):
+        """
+        A direct link to an audio file is only known by its file name (e.g. a UUID): take title, album and
+        artist from the ID3 tag of the file instead. Album (else title) becomes the suggested folder name.
+        """
+        entry = info['entries'][0]
+        try:
+            tags = self._remote_id3(entry['url'])
+        except Exception as e:
+            logger.warning(f"Could not read the tags of '{entry['url']}': {e.__class__.__name__}: {e}")
+            return
+        if not tags['title']:
+            return
+        entry['title'] = tags['title']
+        info['title'] = tags['album'] or tags['title']
+        info['uploader'] = utils.clean_artist(tags['artist']) or tags['album']
+        info['folder'] = utils.sanitize_folder(info['title'])
+
+    @staticmethod
+    def _remote_id3(url) -> dict:
+        """Title, artist and album from the ID3 tag of a remote MP3 file; loads only the start of the file"""
+        def read_start(size):
+            request = urllib.request.Request(url, headers={'Range': f'bytes=0-{size - 1}',
+                                                           'User-Agent': 'Mozilla/5.0 (Phoniebox)'})
+            with urllib.request.urlopen(request, timeout=REMOTE_ID3_TIMEOUT) as response:
+                # A server that ignores the range sends the whole file: read only what is needed
+                return response.read(size)
+
+        size = utils.id3_tag_size(read_start(utils.ID3_HEADER_SIZE))
+        if size is None or size > REMOTE_ID3_MAX_SIZE:
+            return {'title': '', 'artist': '', 'album': ''}
+        return utils.id3_summary(read_start(size))
 
     # ------------------------------------------------------------------
     # Import
@@ -495,6 +545,8 @@ class YtImport:
         source = {'audio': audio, 'cover': None, 'duration': info.get('duration')}
         if cover:
             source['cover'] = self._read_cover(src_dir, name)
+            if source['cover'] is None and _is_mp3(audio):
+                source['cover'] = self._read_embedded_cover(audio, src_dir, name)
         return source
 
     def _read_cover(self, src_dir, name) -> Optional[bytes]:
@@ -503,13 +555,32 @@ class YtImport:
                       if f.lower().endswith(THUMBNAIL_EXTENSIONS)]
         if not thumbnails:
             return None
+        try:
+            return self._small_jpeg(thumbnails[0], src_dir, name)
+        finally:
+            for thumbnail in thumbnails:
+                os.remove(thumbnail)
+
+    def _read_embedded_cover(self, audio, src_dir, name) -> Optional[bytes]:
+        """The cover embedded in the downloaded MP3 (e.g. of a podcast episode) as a small JPEG"""
+        picture = utils.embedded_cover(audio)
+        if not picture:
+            return None
+        image = os.path.join(src_dir, f'{name}_embedded.img')
+        with open(image, 'wb') as f:
+            f.write(picture)
+        try:
+            return self._small_jpeg(image, src_dir, name)
+        finally:
+            os.remove(image)
+
+    def _small_jpeg(self, image, src_dir, name) -> Optional[bytes]:
+        """Convert an image (often WebP or a large JPEG) to a JPEG of at most 500 pixels"""
         jpeg = os.path.join(src_dir, f'{name}_cover.jpg')
-        result = subprocess.run(utils.ffmpeg_cover_cmd(self._ffmpeg, thumbnails[0], jpeg), shell=False,
+        result = subprocess.run(utils.ffmpeg_cover_cmd(self._ffmpeg, image, jpeg), shell=False,
                                 check=False, capture_output=True, text=True, stdin=subprocess.DEVNULL)
-        for thumbnail in thumbnails:
-            os.remove(thumbnail)
         if result.returncode != 0 or not os.path.exists(jpeg):
-            logger.warning(f"Could not convert the thumbnail: {result.stderr.strip()}")
+            logger.warning(f"Could not convert the cover: {result.stderr.strip()}")
             return None
         with open(jpeg, 'rb') as f:
             data = f.read()
@@ -524,8 +595,9 @@ class YtImport:
             pass
 
     def _convert(self, source, destination, start, end):
-        """Convert to MP3 with ffmpeg, publishes the progress, can be cancelled"""
-        cmd = utils.ffmpeg_convert_cmd(self._ffmpeg, source['audio'], destination, self._quality, start, end)
+        """Convert to MP3 with ffmpeg (an MP3 source is copied), publishes the progress, can be cancelled"""
+        cmd = utils.ffmpeg_convert_cmd(self._ffmpeg, source['audio'], destination, self._quality, start, end,
+                                       copy=_is_mp3(source['audio']))
         duration = (end - (start or 0)) if end is not None else (source.get('duration') or 0) - (start or 0)
         lines = []
         with subprocess.Popen(cmd, shell=False, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,

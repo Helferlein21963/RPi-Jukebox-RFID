@@ -1,10 +1,10 @@
-# YouTube import
+# YouTube and podcast import
 
 The Web App page **Import** (bottom navigation) downloads audio from YouTube — and from the other sites
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) supports — directly on the Phoniebox, converts it to MP3 and
-puts it into a new folder of the music library. No PC, FTP or Samba copy needed.
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) supports — as well as podcast episodes directly on the Phoniebox,
+converts it to MP3 and puts it into a new folder of the music library. No PC, FTP or Samba copy needed.
 
-1. Paste the link of a video or a playlist and tap *Load*.
+1. Paste the link of a video, a playlist, a podcast feed or an audio file and tap *Load*.
 2. Edit the folder name, artist and album, the track titles and their order. Unselect tracks you don't
    want. A video with chapters (e.g. an audio book) can be split into one track per chapter.
 3. Tap *Import*. Each track is downloaded, converted to MP3 (or cut out of the video) and tagged with
@@ -18,6 +18,22 @@ An existing folder is never overwritten.
 
 > [!NOTE]
 > Only download content you are allowed to download. Respect the terms of the site and copyrights.
+
+## Podcasts and audio files
+
+Everything a podcast app can play can be imported:
+
+* **A podcast feed** (RSS): all episodes are listed with date and duration, newest first as in the feed.
+  None is selected — tick the episodes you want (*Reverse* turns the order around). The feed link is
+  shown by most podcast apps ("share" / "copy feed URL") or on the website of the podcast ("RSS",
+  "Podcast abonnieren"). Example: `https://kinder.wdr.de/radio/diemaus/audio/diemaus-60/diemaus-60-106.podcast`
+* **A single episode**: the direct link to its audio file (e.g. `https://…/episode_MP3-128.mp3`). Title,
+  album and artist are taken from the tags of the file.
+
+MP3 episodes are copied, not converted again: this is fast (seconds instead of minutes on a Raspberry Pi)
+and keeps the quality. The image of the episode, or else the cover in the file, becomes the cover.
+
+There is no subscription yet: new episodes are imported by hand.
 
 ## Requirements
 

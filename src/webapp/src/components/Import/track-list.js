@@ -16,11 +16,18 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 
 import { toHHMMSS } from '../../utils/utils';
-import { moveItem } from './utils';
+import { formatDate, moveItem } from './utils';
 
 const TrackList = ({ tracks, setTracks }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const selectedCount = tracks.filter((track) => track.selected).length;
+
+  // Date (podcast episodes) and duration below the title
+  const details = (track) => (
+    [formatDate(track.date, i18n?.language), track.duration ? toHHMMSS(track.duration) : null]
+      .filter(Boolean)
+      .join(' · ') || ' '
+  );
 
   const updateTrack = (idx, values) => setTracks(
     tracks.map((track, i) => (i === idx ? { ...track, ...values } : track))
@@ -45,6 +52,11 @@ const TrackList = ({ tracks, setTracks }) => {
           <Button size="small" onClick={() => selectAll(false)}>
             {t('import.editor.select-none')}
           </Button>
+          {tracks.length > 1 &&
+            <Button size="small" onClick={() => setTracks([...tracks].reverse())}>
+              {t('import.editor.reverse')}
+            </Button>
+          }
         </Grid>
       </Grid>
       <List dense disablePadding>
@@ -69,11 +81,7 @@ const TrackList = ({ tracks, setTracks }) => {
               value={track.title}
               disabled={!track.available}
               onChange={(event) => updateTrack(idx, { title: event.target.value })}
-              helperText={
-                track.available
-                  ? (track.duration ? toHHMMSS(track.duration) : ' ')
-                  : t('import.editor.unavailable')
-              }
+              helperText={track.available ? details(track) : t('import.editor.unavailable')}
             />
             <IconButton
               size="small"

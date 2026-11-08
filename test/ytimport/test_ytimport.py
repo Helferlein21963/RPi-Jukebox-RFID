@@ -1,6 +1,7 @@
 # RPi-Jukebox-RFID Version 3
 # Copyright (c) See file LICENSE in project root folder
 """Tests for the YouTube import (ytimport): name cleaning, metadata, track list, import job (no network)"""
+import io
 import os
 import sys
 import threading
@@ -121,6 +122,34 @@ def test_build_info_playlist_is_limited():
     assert info['truncated'] is True
 
 
+def test_build_info_podcast_feed():
+    # As yt-dlp's generic extractor lists an RSS feed: no channel author or image, data per episode
+    raw = {'_type': 'playlist', 'extractor': 'generic', 'title': 'Hörspiel-Podcast', 'entries': [
+        {'_type': 'url_transparent', 'url': 'https://cdn.example/2.mp3#__youtubedl_smuggle=x', 'title': 'Folge 2',
+         'timestamp': 1794114031, 'duration': 3606, 'thumbnail': 'https://cdn.example/episode.jpg'},
+        {'_type': 'url_transparent', 'url': 'https://cdn.example/1.mp3', 'title': 'Folge 1', 'timestamp': None},
+    ]}
+    info = utils.build_info(raw, 'https://example/feed.rss', 200)
+
+    assert info['kind'] == 'feed'
+    assert info['uploader'] == 'Hörspiel-Podcast'
+    assert info['thumbnail'] == 'https://cdn.example/episode.jpg'
+    assert info['folder'] == 'Hoerspiel_Podcast'
+    # Order as in the feed (newest first)
+    assert [(e['title'], e['date'], e['duration']) for e in info['entries']] == [
+        ('Folge 2', '2026-11-08', 3606), ('Folge 1', None, None)]
+    assert info['entries'][0]['url'].startswith('https://cdn.example/2.mp3')
+
+
+def test_build_info_direct_file():
+    raw = {'title': 'ef1f11de_MP3-128', 'direct': True, 'extractor': 'generic', 'timestamp': 1793703189,
+           'webpage_url': 'https://cdn.example/ef1f11de_MP3-128.mp3'}
+    info = utils.build_info(raw, 'https://cdn.example/ef1f11de_MP3-128.mp3', 200)
+    assert info['kind'] == 'video'
+    assert info['entries'][0]['date'] == '2026-11-03'
+    assert info['entries'][0]['chapters'] == []
+
+
 def test_normalize_tracks():
     tracks = utils.normalize_tracks([
         {'url': 'https://y/1', 'title': '  Titel   eins '},
@@ -159,6 +188,15 @@ def test_ffmpeg_convert_cmd():
     assert cmd.index('-ss') < cmd.index('-i') < cmd.index('-t')
 
 
+def test_ffmpeg_convert_cmd_copies_mp3():
+    cmd = utils.ffmpeg_convert_cmd('ffmpeg', 'in.mp3', 'out.mp3', 2, start=10, end=20, copy=True)
+    assert cmd[cmd.index('-codec:a') + 1] == 'copy'
+    assert 'libmp3lame' not in cmd and '-q:a' not in cmd
+    # Cover (video stream) and tags of the source are dropped, cutting still works
+    assert '-vn' in cmd and cmd[cmd.index('-map_metadata') + 1] == '-1'
+    assert cmd[cmd.index('-t') + 1] == '10.000'
+
+
 def test_parse_ffmpeg_progress():
     assert utils.parse_ffmpeg_progress('out_time_us=1500000\n') == 1.5
     assert utils.parse_ffmpeg_progress('out_time_ms=2000000') == 2.0
@@ -181,6 +219,37 @@ def test_tag_mp3(tmp_path):
     assert tags['TRCK'].text == ['3/12']
     assert tags.getall('APIC')[0].data == b'jpegdata'
     assert tags.version[:2] == (2, 3)
+
+
+def make_tagged_mp3(path, title='Folge 1 | Podcast', artist='', album='Podcast', cover=b'picture'):
+    pytest.importorskip('mutagen.id3')
+    path.write_bytes(b'\xff\xfb\x90\x00' + bytes(1000))
+    utils.tag_mp3(str(path), title, artist, album, cover=cover)
+    return path.read_bytes()
+
+
+def test_id3_tag_size_and_summary(tmp_path):
+    data = make_tagged_mp3(tmp_path / 'episode.mp3', title='Aufsteigen  | Die Maus')
+    size = utils.id3_tag_size(data[:10])
+    # The tag ends where the audio starts
+    assert data[size:size + 2] == b'\xff\xfb'
+    assert utils.id3_summary(data[:size]) == {'title': 'Aufsteigen | Die Maus', 'artist': '', 'album': 'Podcast'}
+
+    assert utils.id3_tag_size(b'\xff\xfb\x90\x00' + bytes(10)) is None
+    assert utils.id3_tag_size(b'ID3') is None
+    assert utils.id3_summary(b'no tag at all') == {'title': '', 'artist': '', 'album': ''}
+    # Cut off in the middle of the tag
+    assert utils.id3_summary(data[:size // 2]) == {'title': '', 'artist': '', 'album': ''}
+
+
+def test_embedded_cover(tmp_path):
+    make_tagged_mp3(tmp_path / 'with.mp3', cover=b'picture')
+    make_tagged_mp3(tmp_path / 'without.mp3', cover=None)
+    (tmp_path / 'untagged.mp3').write_bytes(b'\xff\xfb\x90\x00' + bytes(100))
+
+    assert utils.embedded_cover(str(tmp_path / 'with.mp3')) == b'picture'
+    assert utils.embedded_cover(str(tmp_path / 'without.mp3')) is None
+    assert utils.embedded_cover(str(tmp_path / 'untagged.mp3')) is None
 
 
 # ---------------------------------------------------------------------------
@@ -402,3 +471,90 @@ def test_get_versions(ctrl):
         check.assert_not_called()
         ctrl.get_versions(refresh=True)
         check.assert_called_once()
+
+
+def fake_yt_dlp(*results):
+    """yt-dlp module whose YoutubeDL().extract_info returns ``results`` one after another"""
+    ydl = mock.MagicMock()
+    ydl.__enter__.return_value = ydl
+    ydl.extract_info.side_effect = list(results)
+    module = mock.Mock()
+    module.YoutubeDL.return_value = ydl
+    return module
+
+
+def test_fetch_info_direct_file_takes_the_file_tags(ctrl):
+    raw = {'title': 'ef1f11de_MP3-128', 'direct': True, 'extractor': 'generic',
+           'webpage_url': 'https://cdn.example/ef1f11de_MP3-128.mp3'}
+    tags = {'title': 'Aufsteigen | Die Maus', 'artist': '', 'album': 'Die Maus zum Hören'}
+    with mock.patch.object(ytimport, '_import_yt_dlp', return_value=fake_yt_dlp(raw)), \
+            mock.patch.object(ytimport.YtImport, '_remote_id3', return_value=tags) as remote:
+        ctrl.fetch_info('https://cdn.example/ef1f11de_MP3-128.mp3')
+        wait(ctrl)
+
+    remote.assert_called_once_with('https://cdn.example/ef1f11de_MP3-128.mp3')
+    info = ctrl._status['info']
+    assert info['entries'][0]['title'] == 'Aufsteigen | Die Maus'
+    assert info['title'] == 'Die Maus zum Hören'
+    assert info['uploader'] == 'Die Maus zum Hören'
+    assert info['folder'] == 'Die_Maus_zum_Hoeren'
+
+
+def test_fetch_info_direct_file_without_tags(ctrl):
+    raw = {'title': 'ef1f11de_MP3-128', 'direct': True, 'extractor': 'generic',
+           'webpage_url': 'https://cdn.example/ef1f11de_MP3-128.mp3'}
+    with mock.patch.object(ytimport, '_import_yt_dlp', return_value=fake_yt_dlp(raw)), \
+            mock.patch.object(ytimport.YtImport, '_remote_id3', side_effect=OSError('HTTP Error 403')):
+        ctrl.fetch_info('https://cdn.example/ef1f11de_MP3-128.mp3')
+        wait(ctrl)
+
+    # The file name stays the title
+    assert ctrl._status['state'] == 'info'
+    assert ctrl._status['info']['entries'][0]['title'] == 'ef1f11de_MP3-128'
+
+
+def test_remote_id3_loads_only_the_tag(tmp_path):
+    data = make_tagged_mp3(tmp_path / 'episode.mp3') + bytes(5000)
+    requested = []
+
+    def urlopen(request, timeout):
+        start, end = request.get_header('Range').removeprefix('bytes=').split('-')
+        requested.append((int(start), int(end)))
+        # A server that ignores the range: the whole file
+        return io.BytesIO(data)
+
+    with mock.patch.object(ytimport.urllib.request, 'urlopen', side_effect=urlopen):
+        tags = ytimport.YtImport._remote_id3('https://cdn.example/episode.mp3')
+
+    size = utils.id3_tag_size(data)
+    assert requested == [(0, 9), (0, size - 1)]
+    assert tags == {'title': 'Folge 1 | Podcast', 'artist': '', 'album': 'Podcast'}
+
+
+def test_convert_copies_mp3(ctrl, tmp_path):
+    commands = []
+
+    def convert_cmd(*args, **kwargs):
+        commands.append(kwargs)
+        return [sys.executable, '-c', 'pass']
+
+    with mock.patch.object(utils, 'ffmpeg_convert_cmd', side_effect=convert_cmd):
+        ctrl._convert({'audio': str(tmp_path / '0001.MP3'), 'duration': 10}, str(tmp_path / 'out.mp3'), None, None)
+        ctrl._convert({'audio': str(tmp_path / '0002.webm'), 'duration': 10}, str(tmp_path / 'out.mp3'), None, None)
+    assert [c['copy'] for c in commands] == [True, False]
+
+
+def test_download_takes_the_embedded_cover(ctrl, tmp_path):
+    src_dir = tmp_path / 'src'
+    src_dir.mkdir()
+    make_tagged_mp3(src_dir / '0001.mp3', cover=b'large picture')
+    result = {'duration': 3606, 'requested_downloads': [{'filepath': str(src_dir / '0001.mp3')}]}
+    ctrl._small_jpeg = lambda image, *args: b'small ' + open(image, 'rb').read()
+
+    with mock.patch.object(ytimport, '_import_yt_dlp', return_value=fake_yt_dlp(result)):
+        source = ctrl._download('https://cdn.example/1.mp3', str(src_dir), 1, cover=True)
+
+    assert source['cover'] == b'small large picture'
+    assert source['duration'] == 3606
+    # Only the audio is left in the working directory
+    assert os.listdir(src_dir) == ['0001.mp3']

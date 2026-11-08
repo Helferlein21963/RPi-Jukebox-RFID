@@ -1,4 +1,4 @@
-import { buildTracks, chaptersOf, isBusy, moveItem, toImportTracks } from './utils';
+import { buildTracks, chaptersOf, formatDate, isBusy, moveItem, toImportTracks } from './utils';
 
 const video = {
   kind: 'video',
@@ -39,6 +39,28 @@ describe('import track list', () => {
     expect(tracks.map((track) => track.selected)).toEqual([true, false]);
     expect(chaptersOf(playlist)).toEqual([]);
     expect(toImportTracks(tracks)).toEqual([{ url: 'https://y/1', title: 'A', start: null, end: null }]);
+  });
+
+  test('nothing of a podcast feed is selected, episodes keep their date', () => {
+    const feed = {
+      kind: 'feed',
+      entries: [
+        { url: 'https://cdn/2.mp3', title: 'Folge 2', duration: 3606, date: '2026-11-03', available: true, chapters: [] },
+        { url: 'https://cdn/1.mp3', title: 'Folge 1', duration: null, date: null, available: true, chapters: [] },
+      ],
+    };
+    const tracks = buildTracks(feed, true);
+    expect(tracks.map((track) => [track.title, track.date, track.selected])).toEqual([
+      ['Folge 2', '2026-11-03', false],
+      ['Folge 1', null, false],
+    ]);
+    expect(toImportTracks(tracks)).toEqual([]);
+  });
+
+  test('formatDate', () => {
+    expect(formatDate('2026-11-03', 'de')).toBe('3.11.2026');
+    expect(formatDate(null, 'de')).toBeNull();
+    expect(formatDate('kein Datum', 'de')).toBe('kein Datum');
   });
 
   test('keys are unique', () => {

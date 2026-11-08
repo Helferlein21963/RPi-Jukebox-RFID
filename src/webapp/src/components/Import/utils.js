@@ -9,7 +9,8 @@ const chaptersOf = (info) => (
 );
 
 // The editable track list: one track per playlist entry,
-// or one per chapter when a video is split into its chapters
+// or one per chapter when a video is split into its chapters.
+// Nothing of a podcast feed is selected: it often lists many long episodes
 const buildTracks = (info, splitChapters) => (
   (info?.entries || []).flatMap((entry, idx) => {
     if (splitChapters && entry.chapters?.length > 1) {
@@ -32,11 +33,19 @@ const buildTracks = (info, splitChapters) => (
       start: null,
       end: null,
       duration: entry.duration,
+      date: entry.date || null,
       available: entry.available,
-      selected: entry.available,
+      selected: entry.available && info.kind !== 'feed',
     }];
   })
 );
+
+// Date of a podcast episode ('2026-11-03') in the language of the web app
+const formatDate = (date, language) => {
+  if (!date) return null;
+  const parsed = new Date(`${date}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString(language);
+};
 
 // What the core expects in 'start_import'
 const toImportTracks = (tracks) => (
@@ -56,6 +65,7 @@ const moveItem = (list, from, to) => {
 export {
   buildTracks,
   chaptersOf,
+  formatDate,
   isBusy,
   moveItem,
   toImportTracks,

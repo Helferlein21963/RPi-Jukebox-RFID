@@ -137,10 +137,10 @@
     "back": "Zurück"
   },
   "import": {
-    "title": "YouTube-Import",
+    "title": "Import",
     "cancel": "Abbrechen",
     "link": {
-      "label": "Link zu Video oder Playlist",
+      "label": "Link: YouTube, Podcast-Feed oder Audiodatei",
       "load": "Laden",
       "loading": "Lade Infos …"
     },
@@ -157,6 +157,7 @@
       "tracks": "Titel ({{selected}} von {{total}} ausgewählt)",
       "select-all": "Alle",
       "select-none": "Keine",
+      "reverse": "Umkehren",
       "unavailable": "Nicht verfügbar",
       "move-up": "Nach oben",
       "move-down": "Nach unten",

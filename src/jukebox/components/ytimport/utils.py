@@ -3,6 +3,8 @@ Helpers of the YouTube import that do not depend on a running jukebox: name clea
 for the web app, building the ffmpeg command line and writing the MP3 tags.
 """
 
+import datetime
+import io
 import itertools
 import re
 from typing import List, Optional
@@ -78,12 +80,25 @@ def _entry_url(entry: dict) -> Optional[str]:
     return None
 
 
-def _thumbnail(raw: dict) -> Optional[str]:
-    """URL of the best thumbnail (the last one in the list is the largest)"""
+def _thumbnail(raw: dict, entries: Optional[list] = None) -> Optional[str]:
+    """
+    URL of the best thumbnail (the last one in the list is the largest). A playlist without an own
+    thumbnail (e.g. a podcast feed) gets the one of its first entry.
+    """
     if raw.get('thumbnail'):
         return raw['thumbnail']
     thumbnails = [t for t in (raw.get('thumbnails') or []) if t.get('url')]
-    return thumbnails[-1]['url'] if thumbnails else None
+    if thumbnails:
+        return thumbnails[-1]['url']
+    return next((entry['thumbnail'] for entry in entries or [] if entry and entry.get('thumbnail')), None)
+
+
+def _date(timestamp) -> Optional[str]:
+    """Publication date ``YYYY-MM-DD`` (e.g. of a podcast episode) from a UNIX timestamp"""
+    try:
+        return datetime.datetime.fromtimestamp(int(timestamp), tz=datetime.timezone.utc).date().isoformat()
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
 
 
 def build_chapters(raw: dict) -> List[dict]:
@@ -112,20 +127,25 @@ def build_info(raw: dict, url: str, max_entries: int) -> dict:
     """
     Prepare the metadata of yt-dlp (``extract_info(..., process=False)``) for the web app.
 
-    :param raw: Result of yt-dlp for a video or a playlist
+    :param raw: Result of yt-dlp for a video, a playlist, a podcast feed or a direct link to an audio file
     :param url: The link the user entered
     :param max_entries: At most this many playlist entries are listed
     :return: ``{kind, url, title, uploader, thumbnail, folder, truncated, entries}`` where each entry is
-        ``{url, title, duration, available, chapters}``
+        ``{url, title, duration, date, available, chapters}``. ``kind`` is ``video``, ``playlist`` or
+        ``feed`` (a list found by yt-dlp's generic extractor, i.e. a podcast feed)
     """
     title = str(raw.get('title') or '').strip()
     uploader = clean_artist(raw.get('uploader') or raw.get('channel') or raw.get('artist'))
     truncated = False
+    raw_entries = []
 
     if raw.get('_type') in ('playlist', 'multi_video'):
-        kind = 'playlist'
+        kind = 'feed' if raw.get('extractor') == 'generic' else 'playlist'
+        # A feed names no artist: the title of the podcast is the best guess
+        if kind == 'feed' and not uploader:
+            uploader = title
         entries = []
-        raw_entries = itertools.islice(raw.get('entries') or [], max_entries + 1)
+        raw_entries = list(itertools.islice(raw.get('entries') or [], max_entries + 1))
         for entry in raw_entries:
             if not entry:
                 continue
@@ -140,6 +160,7 @@ def build_info(raw: dict, url: str, max_entries: int) -> dict:
                 'url': entry_url,
                 'title': entry_title,
                 'duration': entry.get('duration'),
+                'date': _date(entry.get('timestamp')),
                 'available': entry_title.lower() not in UNAVAILABLE_TITLES,
                 'chapters': [],
             })
@@ -149,6 +170,7 @@ def build_info(raw: dict, url: str, max_entries: int) -> dict:
             'url': raw.get('webpage_url') or url,
             'title': title,
             'duration': raw.get('duration'),
+            'date': _date(raw.get('timestamp')),
             'available': True,
             'chapters': build_chapters(raw),
         }]
@@ -158,7 +180,7 @@ def build_info(raw: dict, url: str, max_entries: int) -> dict:
         'url': url,
         'title': title,
         'uploader': uploader,
-        'thumbnail': _thumbnail(raw),
+        'thumbnail': _thumbnail(raw, raw_entries),
         'folder': sanitize_folder(title),
         'truncated': truncated,
         'entries': entries,
@@ -202,12 +224,15 @@ def normalize_tracks(tracks) -> List[dict]:
 
 
 def ffmpeg_convert_cmd(ffmpeg: str, source: str, destination: str, quality: int,
-                       start: Optional[float] = None, end: Optional[float] = None) -> List[str]:
+                       start: Optional[float] = None, end: Optional[float] = None, copy: bool = False) -> List[str]:
     """
     ffmpeg command line: convert ``source`` (or the part from ``start`` to ``end``) to MP3 (VBR).
 
-    Tags of the source are dropped (they are written afterwards with :func:`tag_mp3`). Progress is written
-    to stdout as ``key=value`` lines (``-progress pipe:1``).
+    Tags and an embedded cover of the source are dropped (they are written afterwards with :func:`tag_mp3`).
+    Progress is written to stdout as ``key=value`` lines (``-progress pipe:1``).
+
+    :param copy: The source is MP3 already (e.g. a podcast episode): copy the audio instead of encoding it
+        again, which is much faster and keeps the quality
     """
     cmd = [ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error', '-y']
     if start:
@@ -215,8 +240,12 @@ def ffmpeg_convert_cmd(ffmpeg: str, source: str, destination: str, quality: int,
     cmd += ['-i', source]
     if end is not None:
         cmd += ['-t', f'{end - (start or 0):.3f}']
-    cmd += ['-vn', '-map_metadata', '-1', '-codec:a', 'libmp3lame', '-q:a', str(int(quality)),
-            '-progress', 'pipe:1', '-nostats', destination]
+    cmd += ['-vn', '-map_metadata', '-1']
+    if copy:
+        cmd += ['-codec:a', 'copy']
+    else:
+        cmd += ['-codec:a', 'libmp3lame', '-q:a', str(int(quality))]
+    cmd += ['-progress', 'pipe:1', '-nostats', destination]
     return cmd
 
 
@@ -260,3 +289,61 @@ def tag_mp3(path: str, title: str, artist: str = '', album: str = '', track: Opt
     if cover:
         tags.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='Cover', data=cover))
     tags.save(path, v2_version=3)
+
+
+#: Size of the ID3v2 header at the start of a file
+ID3_HEADER_SIZE = 10
+
+
+def id3_tag_size(header: bytes) -> Optional[int]:
+    """
+    Total size (header included) of the ID3v2 tag a file starts with, from its first 10 bytes.
+
+    :return: None if the data does not start with an ID3v2 tag
+    """
+    if len(header) < ID3_HEADER_SIZE or header[:3] != b'ID3':
+        return None
+    size_bytes = header[6:10]
+    if any(b & 0x80 for b in size_bytes):
+        return None
+    # Syncsafe integer: 7 bits per byte
+    size = (size_bytes[0] << 21) | (size_bytes[1] << 14) | (size_bytes[2] << 7) | size_bytes[3]
+    footer = ID3_HEADER_SIZE if header[5] & 0x10 else 0
+    return ID3_HEADER_SIZE + size + footer
+
+
+def id3_summary(data: bytes) -> dict:
+    """
+    Title, artist and album from the ID3 tag at the start of an MP3 file (e.g. of a podcast episode).
+
+    :param data: The start of the file, at least the whole tag (see :func:`id3_tag_size`)
+    :return: ``{'title', 'artist', 'album'}``, empty strings for what is missing or if there is no usable tag
+    """
+    from mutagen.id3 import ID3, ID3NoHeaderError
+    from mutagen import MutagenError
+
+    result = {'title': '', 'artist': '', 'album': ''}
+    try:
+        tags = ID3(io.BytesIO(data))
+    except (ID3NoHeaderError, MutagenError, OSError, ValueError, EOFError):
+        return result
+    for key, frame in (('title', 'TIT2'), ('artist', 'TPE1'), ('album', 'TALB')):
+        if frame in tags:
+            result[key] = re.sub(r'\s+', ' ', str(tags[frame])).strip()
+    return result
+
+
+def embedded_cover(path: str) -> Optional[bytes]:
+    """The cover picture embedded in an MP3 file (front cover preferred), None if there is none"""
+    from mutagen.id3 import ID3, ID3NoHeaderError
+    from mutagen import MutagenError
+
+    try:
+        pictures = ID3(path).getall('APIC')
+    except (ID3NoHeaderError, MutagenError, OSError):
+        return None
+    pictures = [p for p in pictures if p.data]
+    if not pictures:
+        return None
+    front = [p for p in pictures if p.type == 3]
+    return (front or pictures)[0].data

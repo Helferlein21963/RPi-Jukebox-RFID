@@ -81,6 +81,20 @@ test('the whole video as one track, deselected tracks are not imported', async (
   expect(startButton()).toBeDisabled();
 });
 
+test('reverses the order of the tracks', async () => {
+  render(<Editor info={info} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'import.editor.reverse' }));
+  fireEvent.click(startButton());
+
+  await waitFor(() => expect(request).toHaveBeenCalledWith('ytimportStart', expect.objectContaining({
+    tracks: [
+      { url: 'https://www.youtube.com/watch?v=v', title: 'Teil 2', start: 100, end: 300 },
+      { url: 'https://www.youtube.com/watch?v=v', title: 'Teil 1', start: 0, end: 100 },
+    ],
+  })));
+});
+
 test('an existing folder blocks the import', async () => {
   request.mockImplementation(async (command) => (
     command === 'ytimportCheckFolder'
