@@ -7,7 +7,7 @@ The Web App sources are located in `src/webapp`. A pre-build bundle of the Web A
 If you installed from an official release branch, Node might not be installed. To install Node for local development, follow the [official setup](https://deb.nodesource.com/).
 
 ``` bash
-NODE_MAJOR=20
+NODE_MAJOR=22
 sudo apt-get -y update && sudo apt-get -y install ca-certificates curl gnupg
 sudo mkdir -p /etc/apt/keyrings
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg

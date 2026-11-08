@@ -26,8 +26,10 @@ An existing folder is never overwritten.
   existing installation, tap *Install* on the Import page, or run
   `~/RPi-Jukebox-RFID/.venv/bin/pip install "yt-dlp[default]" mutagen`.
 * A **JavaScript runtime** for YouTube, `node` by default. yt-dlp needs a recent version (see the hint
-  on the Import page; at the time of writing node 22 or newer). The node installed for building the Web
-  App may be older. To use a different node only for the import, set `ytimport.js_runtime_path`.
+  on the Import page; at the time of writing node 22 or newer). The installer sets up node 22 together
+  with the Web App. Older installations may have node 20: update node (see
+  [Install node manually](../../developers/webapp.md#install-node-manually)), or set
+  `ytimport.js_runtime_path` to use a different node only for the import.
 * The plugin in `shared/settings/jukebox.yaml`:
 
 ```yaml

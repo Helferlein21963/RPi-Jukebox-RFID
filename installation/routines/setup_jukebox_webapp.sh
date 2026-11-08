@@ -4,10 +4,11 @@
 WEBAPP_NGINX_SITE_DEFAULT_CONF="/etc/nginx/sites-available/default"
 
 # Node major version used.
-# If changed also update in .github\actions\build-webapp\action.yml
-NODE_MAJOR=20
+# Node builds the Web App and runs YouTube's JavaScript for yt-dlp (YouTube import), which needs node >= 22.
+# If changed also update in .github\actions\build-webapp\action.yml and docker\webapp.Dockerfile
+NODE_MAJOR=22
 # Node version for ARMv6 (unofficial builds)
-NODE_ARMv6_VERSION=v20.10.0
+NODE_ARMv6_VERSION=v22.23.4
 
 OPTIONAL_WEBAPP_BUILD_FAILED=false
 
@@ -130,19 +131,19 @@ _jukebox_webapp_register_as_system_service_with_nginx() {
 _jukebox_webapp_check() {
     print_verify_installation
 
+    local arch=$(uname -m)
+    if [[ "$arch" == "armv6l" ]]; then
+        local node_version_installed=$(node -v 2>/dev/null)
+        log "  Verify 'node' is installed"
+        test ! "${node_version_installed}" == "${NODE_ARMv6_VERSION}" && exit_on_error "ERROR: 'node' not in expected version: '${node_version_installed}' instead of '${NODE_ARMv6_VERSION}'!"
+        log "  CHECK"
+    else
+        verify_apt_packages nodejs
+    fi
+
     if [[ "$ENABLE_WEBAPP_PROD_DOWNLOAD" == true || "$ENABLE_WEBAPP_PROD_DOWNLOAD" == "release-only" ]] ; then
         verify_dirs_exists "${INSTALLATION_PATH}/src/webapp/build"
     else
-        local arch=$(uname -m)
-        if [[ "$arch" == "armv6l" ]]; then
-            local node_version_installed=$(node -v 2>/dev/null)
-            log "  Verify 'node' is installed"
-            test ! "${node_version_installed}" == "${NODE_ARMv6_VERSION}" && exit_on_error "ERROR: 'node' not in expected version: '${node_version_installed}' instead of '${NODE_ARMv6_VERSION}'!"
-            log "  CHECK"
-        else
-            verify_apt_packages nodejs
-        fi
-
         if [[ "$OPTIONAL_WEBAPP_BUILD_FAILED" == false ]]; then
             verify_dirs_exists "${INSTALLATION_PATH}/src/webapp/build"
         fi
@@ -159,10 +160,11 @@ _jukebox_webapp_check() {
 }
 
 _run_setup_jukebox_webapp() {
+    # Also with a downloaded bundle: the YouTube import of the Web App needs node (yt-dlp)
+    _jukebox_webapp_install_node
     if [[ "$ENABLE_WEBAPP_PROD_DOWNLOAD" == true || "$ENABLE_WEBAPP_PROD_DOWNLOAD" == "release-only" ]] ; then
         _jukebox_webapp_download
     else
-        _jukebox_webapp_install_node
         _jukebox_webapp_build
     fi
     _jukebox_webapp_register_as_system_service_with_nginx
