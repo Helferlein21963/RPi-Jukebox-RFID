@@ -30,6 +30,13 @@ server {
 			default_type text/plain;
 	}
 
+	# HTTP API of the core (plugin http_api, port from jukebox.yaml http_api.port)
+	location /api/ {
+			proxy_pass http://127.0.0.1:5559;
+			proxy_set_header Host $host;
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	}
+
 	location @buildwebui {
  		 root %%INSTALLATION_PATH%%/resources/html;
 		 try_files /runbuildui.html =404;

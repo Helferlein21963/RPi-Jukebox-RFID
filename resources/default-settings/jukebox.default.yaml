@@ -20,6 +20,7 @@ modules:
     gpio: gpio.gpioz.plugin
     sync_rfidcards: synchronisation.rfidcards
     ytimport: ytimport
+    http_api: http_api
   others:
   - misc
 pulse:
@@ -168,5 +169,13 @@ ytimport:
   # Working directory for downloads; keep it outside the music library (MPD watches the library)
   tmp_dir: ../../shared/tmp/ytimport
   ffmpeg: ffmpeg
+# Simple HTTP interface, e.g. for widget buttons on a phone (app 'HTTP Shortcuts')
+# URLs: /api/alias/<alias>, /api/rpc/<package>/<plugin>/<method>, /api/status
+# No authentication (like the RPC ports): everyone in the local network can control the box
+http_api:
+  enable: true
+  # 0.0.0.0: all network interfaces. 127.0.0.1: only via nginx (http://<box>/api/...)
+  host: 0.0.0.0
+  port: 5559
 webapp:
   coverart_cache_path: ../../src/webapp/build/cover-cache

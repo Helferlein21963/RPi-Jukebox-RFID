@@ -15,6 +15,7 @@
 * [Card Database](./card-database.md)
     * [RFID Cards synchronisation](./components/synchronisation/rfidcards.md)
 * [Auto Hotspot](./autohotspot.md)
+* [HTTP API and widgets on the phone](./http-api.md)
 * File Management
     * [Network share / Samba](./samba.md)
     * [YouTube and podcast import (Web App)](./webapp/youtube-import.md)
