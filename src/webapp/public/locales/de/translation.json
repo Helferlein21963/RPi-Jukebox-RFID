@@ -229,6 +229,11 @@
       "folders": "Ordner",
       "songs": "Titel"
     },
+    "cards": {
+      "assigned_one": "Zugeordnete Karte",
+      "assigned_other": "Zugeordnete Karten",
+      "edit-card": "Karte bearbeiten"
+    },
     "selector-header": {
       "title": "Wähle ein Album, einen Ordner oder einen Song aus"
     },

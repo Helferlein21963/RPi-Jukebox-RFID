@@ -10,6 +10,7 @@ import {
 
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 
+import { useSongCards, withCards } from '../../library-cards';
 import { NowPlayingIcon, togglePlayback } from '../../now-playing';
 import { toHHMMSS } from '../../../../utils/utils';
 import request from '../../../../utils/request';
@@ -30,6 +31,8 @@ const SongListItem = ({
     file,
     title,
   } = song;
+
+  const cards = useSongCards(file);
 
   // Play only this song. The current song: pause, or continue
   const playSong = () => (
@@ -61,7 +64,7 @@ const SongListItem = ({
         </ListItemIcon>
         <ListItemText
           primary={title || file.split('/').pop() || t('library.albums.unknown-title')}
-          secondary={details}
+          secondary={withCards(details, cards)}
         />
       </ListItemButton>
     </ListItem>

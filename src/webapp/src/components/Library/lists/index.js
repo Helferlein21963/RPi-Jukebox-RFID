@@ -20,6 +20,8 @@ import LibraryHeader from "../library-header";
 import SelectorHeader from "../selector-header";
 
 import { buildActionData } from '../../Cards/utils';
+import { LibraryCardsProvider } from '../library-cards';
+import { useMusicLibraryPath } from '../now-playing';
 import { loadSorts, saveSorts, sortOf } from '../sort';
 
 const LibraryLists = () => {
@@ -31,6 +33,8 @@ const LibraryLists = () => {
   const [musicFilter, setMusicFilter] = useState('');
   // Chosen sort of each view, kept in the browser
   const [sorts, setSorts] = useState(loadSorts);
+  // The cards of the folders, albums and songs are shown in all views
+  const libraryPath = useMusicLibraryPath();
 
   const changeSort = (view, sort) => {
     const changed = { ...sorts, [view]: sort };
@@ -51,70 +55,72 @@ const LibraryLists = () => {
   };
 
   return (
-    <Grid container id="library">
-      {isSelecting && <SelectorHeader />}
-      <Grid container sx={{ padding: '10px' }}>
-        <LibraryHeader
-          musicFilter={musicFilter}
-          setMusicFilter={setMusicFilter}
-          sorts={sorts}
-          onSortChange={changeSort}
-        />
-        <Grid
-          container
-          spacing={1}
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-          }}
-        >
-          <Routes>
-            <Route
-              path="albums"
-              element={<Albums musicFilter={musicFilter} sort={sortOf(sorts, 'albums')} />}
-              exact
-            />
-            <Route
-              path="albums/:artist/:album"
-              element={
-                <SongList
-                  isSelecting={isSelecting}
-                  registerMusicToCard={registerMusicToCard}
-                />
-              }
-              exact
-            />
-            <Route
-              path="songs"
-              element={
-                <Songs
-                  musicFilter={musicFilter}
-                  sort={sortOf(sorts, 'songs')}
-                  isSelecting={isSelecting}
-                  registerMusicToCard={registerMusicToCard}
-                />
-              }
-              exact
-            />
-            <Route
-              path="folders"
-              element={<Navigate to={`.%2F${urlSearch}`} replace />}
-            />
-            <Route
-              path="folders/:dir"
-              element={
-                <Folders
-                  musicFilter={musicFilter}
-                  sort={sortOf(sorts, 'folders')}
-                  isSelecting={isSelecting}
-                  registerMusicToCard={registerMusicToCard}
-                />
-              }
-            />
-          </Routes>
+    <LibraryCardsProvider libraryPath={libraryPath}>
+      <Grid container id="library">
+        {isSelecting && <SelectorHeader />}
+        <Grid container sx={{ padding: '10px' }}>
+          <LibraryHeader
+            musicFilter={musicFilter}
+            setMusicFilter={setMusicFilter}
+            sorts={sorts}
+            onSortChange={changeSort}
+          />
+          <Grid
+            container
+            spacing={1}
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+            }}
+          >
+            <Routes>
+              <Route
+                path="albums"
+                element={<Albums musicFilter={musicFilter} sort={sortOf(sorts, 'albums')} />}
+                exact
+              />
+              <Route
+                path="albums/:artist/:album"
+                element={
+                  <SongList
+                    isSelecting={isSelecting}
+                    registerMusicToCard={registerMusicToCard}
+                  />
+                }
+                exact
+              />
+              <Route
+                path="songs"
+                element={
+                  <Songs
+                    musicFilter={musicFilter}
+                    sort={sortOf(sorts, 'songs')}
+                    isSelecting={isSelecting}
+                    registerMusicToCard={registerMusicToCard}
+                  />
+                }
+                exact
+              />
+              <Route
+                path="folders"
+                element={<Navigate to={`.%2F${urlSearch}`} replace />}
+              />
+              <Route
+                path="folders/:dir"
+                element={
+                  <Folders
+                    musicFilter={musicFilter}
+                    sort={sortOf(sorts, 'folders')}
+                    isSelecting={isSelecting}
+                    registerMusicToCard={registerMusicToCard}
+                  />
+                }
+              />
+            </Routes>
+          </Grid>
         </Grid>
       </Grid>
-    </Grid>
+    </LibraryCardsProvider>
   );
 };
 

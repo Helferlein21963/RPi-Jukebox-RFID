@@ -16,6 +16,7 @@ import SwapVertIcon from '@mui/icons-material/SwapVert';
 import FolderListItem from './folder-list-item';
 import FolderListItemBack from './folder-list-item-back';
 import RenameDialog from '../../dialogs/rename';
+import { CardChips, useFolderCards } from '../../library-cards';
 import ReorderDialog from '../../dialogs/reorder';
 import {
   isFolderPlaying,
@@ -56,6 +57,7 @@ const FolderList = ({
   }
 
   const parentDir = getParentDir();
+  const folderCards = useFolderCards(isRootDir ? undefined : decodedDir);
   // The order only matters with two songs or more
   const canReorder = folders.filter(({ type }) => type === 'file').length > 1;
 
@@ -112,6 +114,9 @@ const FolderList = ({
             label={t('library.folders.play-folder')}
           />
         </Grid>
+      }
+      {!isRootDir && !isSelecting &&
+        <CardChips cards={folderCards} sx={{ padding: '0 8px' }} />
       }
       <List sx={{ width: '100%' }}>
         {parentDir &&

@@ -230,6 +230,11 @@
       "folders": "Folders",
       "songs": "Songs"
     },
+    "cards": {
+      "assigned_one": "Assigned card",
+      "assigned_other": "Assigned cards",
+      "edit-card": "Edit card"
+    },
     "selector-header": {
       "title": "Select an album, folder or song"
     },

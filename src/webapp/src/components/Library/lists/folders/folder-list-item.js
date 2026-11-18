@@ -14,6 +14,7 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import request from '../../../../utils/request';
 import FolderLink from './folder-link';
 import FolderTypeAvatar from './folder-type-avatar';
+import { useFolderCards, useSongCards, withCards } from '../../library-cards';
 import { togglePlayback } from '../../now-playing';
 import { DEFAULT_AUDIO_DIR } from '../../../../config';
 
@@ -30,6 +31,10 @@ const FolderListItem = ({
   const { t } = useTranslation();
   const { type, name, path } = folder;
   const isDirectory = type === 'directory';
+  // Cards registered for this folder / song
+  const folderCards = useFolderCards(isDirectory ? path : undefined);
+  const songCards = useSongCards(type === 'file' ? path : undefined);
+  const cards = isDirectory ? folderCards : songCards;
 
   // Play the whole folder that is shown, starting with this entry.
   // Like the play button of the folder: recursive, except in the root folder (the whole library).
@@ -86,7 +91,7 @@ const FolderListItem = ({
     >
       <ListItemButton selected={isCurrent} {...buttonProps}>
         <FolderTypeAvatar type={type} path={path} isCurrent={isCurrent} isPlaying={isPlaying} />
-        <ListItemText primary={name} />
+        <ListItemText primary={name} secondary={withCards(undefined, cards)} />
       </ListItemButton>
     </ListItem>
   );

@@ -9,6 +9,7 @@ import {
   Typography,
 } from '@mui/material';
 
+import { useSongCards, withCards } from '../../../library-cards';
 import { NowPlayingIcon, togglePlayback } from '../../../now-playing';
 import { toHHMMSS } from '../../../../../utils/utils';
 import request from '../../../../../utils/request'
@@ -31,6 +32,8 @@ const SongListItem = ({
     title,
     track,
   } = song;
+
+  const cards = useSongCards(file);
 
   // Track numbers can look like '3/12'
   const trackNumber = parseInt(track, 10);
@@ -61,7 +64,10 @@ const SongListItem = ({
         </ListItemIcon>
         <ListItemText
           primary={title || t('library.albums.unknown-title')}
-          secondary={`${artist || t('library.albums.unknown-artist')} • ${toHHMMSS(duration)}`}
+          secondary={withCards(
+            `${artist || t('library.albums.unknown-artist')} • ${toHHMMSS(duration)}`,
+            cards,
+          )}
         />
       </ListItemButton>
     </ListItem>

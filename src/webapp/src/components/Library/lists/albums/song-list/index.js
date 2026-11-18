@@ -16,6 +16,7 @@ import SongListHeader from './song-list-header';
 import SongListHeadline from './song-list-headline';
 import SongListControls from './song-list-controls';
 import SongListItem from './song-list-item';
+import { useAlbumCards } from '../../../library-cards';
 import { isSongPlaying, useNowPlaying } from '../../../now-playing';
 import { tagFromUrl } from '../utils';
 
@@ -28,6 +29,7 @@ const SongList = ({
   const album = tagFromUrl(params.album);
   const artist = tagFromUrl(params.artist);
   const nowPlaying = useNowPlaying();
+  const albumCards = useAlbumCards(artist, album);
   const [songs, setSongs] = useState([]);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -70,6 +72,7 @@ const SongList = ({
       <SongListHeadline
         album={album || t('library.albums.unknown-album')}
         artist={artist || t('library.albums.unknown-artist')}
+        cards={albumCards}
       />
       <SongListControls
         album={album}

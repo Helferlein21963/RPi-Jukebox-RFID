@@ -46,4 +46,5 @@ const cardMusic = (card, libraryPath) => {
 export {
   cardMusic,
   toDisplayPath,
+  toRelativePath,
 };

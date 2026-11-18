@@ -16,6 +16,7 @@ import {
 import noCover from '../../../../../assets/noCover.jpg';
 
 import useCover from '../../../../../utils/use-cover';
+import { useAlbumCards, withCards } from '../../../library-cards';
 import { NowPlayingIcon } from '../../../now-playing';
 import { tagToUrl } from '../utils';
 
@@ -33,6 +34,7 @@ const AlbumListItem = ({
     albumartist && album ? ['getAlbumCoverArt', { albumartist, album }] : undefined
   );
   const coverImage = cover || noCover;
+  const cards = useAlbumCards(albumartist, album);
 
   const AlbumLink = forwardRef((props, ref) => {
     const { data } = props;
@@ -62,7 +64,7 @@ const AlbumListItem = ({
         </ListItemAvatar>
         <ListItemText
           primary={album || t('library.albums.unknown-album')}
-          secondary={albumartist || null}
+          secondary={withCards(albumartist || null, cards)}
         />
       </ListItemButton>
     </ListItem>
