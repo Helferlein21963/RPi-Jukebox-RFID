@@ -32,6 +32,22 @@ const findActionByCommand = (command) => {
   return action;
 };
 
+// Actions offered for a card: the enabled ones, plus the current one even if disabled
+const getSelectableActions = (current) => (
+  Object.keys(JUKEBOX_ACTIONS_MAP).filter(
+    (action) => !JUKEBOX_ACTIONS_MAP[action].disabled || action === current
+  )
+);
+
+// Commands of an action offered for a card: the enabled ones, plus the current one even if disabled
+const getSelectableCommands = (action, current) => {
+  const { [action]: { commands = {} } = {} } = JUKEBOX_ACTIONS_MAP;
+
+  return Object.keys(commands).filter(
+    (command) => !commands[command].disabled || command === current
+  );
+};
+
 const getCommandArgKeys = (command) => {
   const { [command] : { argKeys = [] } = {} } = commands;
 
@@ -72,4 +88,6 @@ export {
   findActionByCommand,
   getActionAndCommand,
   getArgsValues,
+  getSelectableActions,
+  getSelectableCommands,
 };

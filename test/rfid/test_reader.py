@@ -80,7 +80,7 @@ def fake_reader_class(sessions, clock, calls, cancel):
     return FakeReader
 
 
-def run_reads(monkeypatch, reads, sessions=None):
+def run_reads(monkeypatch, reads, sessions=None, place=False):
     """
     Feed card reads through ReaderRunner.run() and return the triggered calls
 
@@ -88,6 +88,7 @@ def run_reads(monkeypatch, reads, sessions=None):
     :param sessions: Instead of reads: one entry per opening of the reader. An entry is either an exception
         raised when opening the reader, or (reads, exception raised after these reads or None).
         After the last entry, the reader is stopped (like on shutdown)
+    :param place: Treat the reader as place-capable (``place_not_swipe``), without starting the card removal timer
     :return: calls, the reader runner
     """
     clock = Clock()
@@ -127,6 +128,8 @@ def run_reads(monkeypatch, reads, sessions=None):
 
     runner = reader.ReaderRunner('read_test')
     runner._cancel = cancel
+    if place:
+        runner._cfg_place_not_swipe = True
     runner.run()
     if reads is None:
         return [c for c in calls if c[0] != 'publish'], runner
@@ -201,9 +204,16 @@ def test_command_card_repeats_its_command(monkeypatch):
     assert player_calls(calls) == ['player.ctrl.next', 'player.ctrl.next']
 
 
-def test_card_with_ignore_same_id_delay_triggers_every_read(monkeypatch):
-    calls = run_reads(monkeypatch, [(0, 'volume'), (0.3, 'volume'), (0.3, 'volume')])
+def test_card_with_ignore_same_id_delay_triggers_every_read_on_place_capable_reader(monkeypatch):
+    # The card lies on the reader, which repeats the read: e.g. the volume goes up as long as the card lies there
+    calls = run_reads(monkeypatch, [(0, 'volume'), (0.3, 'volume'), (0.3, 'volume')], place=True)
     assert player_calls(calls) == ['volume.ctrl.change_volume'] * 3
+
+
+def test_card_with_ignore_same_id_delay_triggers_once_per_swipe_on_swipe_reader(monkeypatch):
+    # USB reader: placing gives 2 reads ~0.6s apart; one swipe must change the volume only once
+    calls = run_reads(monkeypatch, [(0, 'volume'), (0.6, 'volume'), (5, 'volume'), (0.6, 'volume')])
+    assert player_calls(calls) == ['volume.ctrl.change_volume'] * 2
 
 
 def test_other_card_in_between_is_a_new_read(monkeypatch):

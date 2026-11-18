@@ -34,6 +34,9 @@ const ROOT_DIRS = ['./', DEFAULT_AUDIO_DIR];
 // the data structure from object to array requires some refactoring, this
 // was not done yet to maintain functionality. It's ok to change the command
 // object keys to arrays, but some downstream methods need to change as well
+//
+// `disabled: true` on an action or a command hides it when registering a card
+// (cards that already use it can still be opened and changed)
 const JUKEBOX_ACTIONS_MAP = {
   // Command Aliases
   // Player
@@ -49,7 +52,8 @@ const JUKEBOX_ACTIONS_MAP = {
   audio: {
     commands: {
       change_volume: {},
-      toggle_output: {},
+      // Disabled: needs a secondary audio output (pulse.outputs.secondary), not set up on this box
+      toggle_output: { disabled: true },
       play: {},
       pause: {},
       toggle: {},
@@ -79,7 +83,9 @@ const JUKEBOX_ACTIONS_MAP = {
   },
 
   // Synchronisation
+  // Disabled: needs sync_rfidcards.enable and a sync server, not set up on this box
   synchronisation: {
+    disabled: true,
     commands: {
       sync_rfidcards_all: {},
       sync_rfidcards_change_on_rfid_scan: {},

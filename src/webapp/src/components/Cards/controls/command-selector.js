@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 
 import { JUKEBOX_ACTIONS_MAP } from '../../../config';
-import { getActionAndCommand } from '../utils';
+import { getActionAndCommand, getSelectableCommands } from '../utils';
 
 const CommandSelector = ({
   actionData,
@@ -18,8 +18,8 @@ const CommandSelector = ({
 }) => {
   const { t } = useTranslation();
   const { action, command = {} } = getActionAndCommand(actionData);
-  const commandList = Object.keys(JUKEBOX_ACTIONS_MAP[action].commands);
   const value = isEmpty(command) ? 0 : command;
+  const commandList = getSelectableCommands(action, value);
 
   const onChange = (event) => {
     handleActionDataChange(action, event.target?.value);

@@ -251,10 +251,13 @@ class ReaderRunner(threading.Thread):
 
                             if card_action is not None:
                                 # (6) Override card individual parameters
-                                if card_action.get('ignore_same_id_delay', False):
+                                if card_action.get('ignore_same_id_delay', False) and self._cfg_place_not_swipe is True:
                                     # If this is a 'ignore_same_id_delay' card, clear the previous ID:
                                     # This very neatly allows (without overhead) that the card can trigger the command again
-                                    # without waiting for same_id_delay
+                                    # without waiting for same_id_delay.
+                                    # Only for place-capable readers, which repeat the read while the card lies on them:
+                                    # swipe readers (e.g. USB) read a card twice on placing and again on removal,
+                                    # so every read counting would e.g. change the volume several times per swipe
                                     previous_id = ''
                                 elif self._timer_thread is not None:
                                     # Only activate removal action if ignore_same_id_delay is False

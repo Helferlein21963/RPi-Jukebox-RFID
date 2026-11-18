@@ -13,7 +13,7 @@ from typing import Optional
 
 import jukebox.cfghandler
 import jukebox.plugs as plugin
-from jukebox.multitimer import GenericTimerClass
+from jukebox.multitimer import GenericTimerClass, valid_wait_seconds
 
 
 logger = logging.getLogger('jb.timers')
@@ -105,6 +105,9 @@ class VolumeFadeOutTimerClass(GenericTimerClass):
         """
         if self.is_alive():
             logger.error(f"Timer '{self._name}' started! Ignoring start command.")
+            return
+        if not valid_wait_seconds(wait_seconds):
+            logger.error(f"Timer '{self._name}': invalid wait time {wait_seconds!r}. Ignoring start command.")
             return
         if wait_seconds is not None:
             self._wait_seconds = wait_seconds

@@ -106,6 +106,16 @@ class MultiTimer(threading.Thread):
             self.publish_callback(enabled=False)
 
 
+def valid_wait_seconds(wait_seconds) -> bool:
+    """True if ``wait_seconds`` is None (use the default) or a number greater than 0"""
+    if wait_seconds is None:
+        return True
+    try:
+        return float(wait_seconds) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 class GenericTimerClass:
     """
     Interface for plugin / RPC accessibility for a single event timer
@@ -131,9 +141,16 @@ class GenericTimerClass:
 
     @plugin.tag
     def start(self, wait_seconds=None):
-        """Start the timer (with default or new parameters)"""
+        """Start the timer (with default or new parameters)
+
+        A wait time of 0 or less is refused: e.g. a card for the shutdown timer saved with 'off'
+        would otherwise shut down at once
+        """
         if self.is_alive():
             logger.error(f"Timer '{self._name}' started! Ignoring start command.")
+            return
+        if not valid_wait_seconds(wait_seconds):
+            logger.error(f"Timer '{self._name}': invalid wait time {wait_seconds!r}. Ignoring start command.")
             return
         if wait_seconds is not None:
             self._wait_seconds = wait_seconds

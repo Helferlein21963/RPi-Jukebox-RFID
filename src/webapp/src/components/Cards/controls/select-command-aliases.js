@@ -7,8 +7,7 @@ import {
   NativeSelect
 } from '@mui/material';
 
-import { JUKEBOX_ACTIONS_MAP } from '../../../config';
-import { getActionAndCommand } from '../utils';
+import { getActionAndCommand, getSelectableActions } from '../utils';
 
 const SelectCommandAliases = ({
   actionData,
@@ -17,8 +16,8 @@ const SelectCommandAliases = ({
   const { t } = useTranslation();
 
   const { action = {} } = getActionAndCommand(actionData);
-  const actionsList = Object.keys(JUKEBOX_ACTIONS_MAP);
   const value = isEmpty(action) ? 0 : action;
+  const actionsList = getSelectableActions(value);
 
   return (
     <FormControl>

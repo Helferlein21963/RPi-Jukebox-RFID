@@ -115,6 +115,24 @@ def test_timer_start_while_running_is_ignored(published):
         timer.cancel()
 
 
+@pytest.mark.parametrize('wait_seconds', [0, -5, '0', 'soon'])
+def test_timer_start_with_invalid_wait_time_is_refused(published, wait_seconds):
+    # E.g. a shutdown timer card saved with 'off' (0): must not shut down at once
+    function = mock.Mock()
+    timer = multitimer.GenericTimerClass('test.timer', 100, function)
+    timer.start(wait_seconds=wait_seconds)
+    assert timer.timer_thread is None
+    assert not timer.is_alive()
+    assert timer.get_timeout() == 100
+    function.assert_not_called()
+
+
+@pytest.mark.parametrize('wait_seconds, expected', [
+    (None, True), (1, True), (0.5, True), ('60', True), (0, False), (-1, False), ('x', False), ([], False)])
+def test_valid_wait_seconds(wait_seconds, expected):
+    assert multitimer.valid_wait_seconds(wait_seconds) is expected
+
+
 # ---------------------------------------------------------------------------
 # Volume fade out
 # ---------------------------------------------------------------------------
@@ -182,6 +200,14 @@ def test_fade_timer_start_with_wait_and_fade_seconds(published, plugs_calls):
     assert (interval, steps, action.steps) == (0.5, 60, 60)
     assert timer.get_timeout() == 600
     assert timer.get_state()['fade_seconds'] == 30
+
+
+def test_fade_timer_start_with_zero_wait_time_is_refused(published, plugs_calls):
+    timer = timers.VolumeFadeOutTimerClass('timers.timer_fade_volume', 3600, fade_seconds=10)
+    with mock.patch.object(timer, '_start_thread') as start_thread:
+        timer.start(wait_seconds=0)
+    start_thread.assert_not_called()
+    assert timer.get_timeout() == 3600
 
 
 def test_fade_timer_without_fade_seconds_uses_the_default(published, plugs_calls):
