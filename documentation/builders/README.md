@@ -31,6 +31,7 @@
 
 ## Web Application
 
+* [Volume: slider on every page, keyboard keys](./webapp/volume.md)
 * Music
     * [Playlists, Livestreams and Podcasts](./webapp/playlists-livestreams-podcasts.md)
 

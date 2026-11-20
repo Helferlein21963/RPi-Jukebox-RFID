@@ -13,7 +13,8 @@ import { useTheme } from '@mui/material/styles';
 import PubSubContext from '../../context/pubsub/context';
 import request from '../../utils/request';
 
-const Volume = () => {
+// compact: small variant for the bar at the top of every page (components/TopBar)
+const Volume = ({ compact = false }) => {
   const theme = useTheme();
   const { t } = useTranslation();
   const { state } = useContext(PubSubContext);
@@ -78,10 +79,11 @@ const Volume = () => {
       container
       sx={{ width: '100%' }}
     >
-      <Grid item sx={{ marginRight: theme.spacing(1) }}>
+      <Grid item sx={{ marginRight: theme.spacing(compact ? 0.5 : 1) }}>
         <IconButton
           aria-label={labelIcon()}
           onClick={toggleVolumeMute}
+          size={compact ? 'small' : 'medium'}
           title={labelIcon()}
         >
           {volumeMute && <VolumeOffIcon />}
@@ -90,13 +92,14 @@ const Volume = () => {
           {!volumeMute && _volume >= 50 && <VolumeUpIcon />}
         </IconButton>
       </Grid>
-      <Grid item xs sx={{ marginTop: theme.spacing(1) }}>
+      <Grid item xs sx={{ marginTop: compact ? 0 : theme.spacing(1) }}>
         <Slider
           aria-labelledby={t('player.volume.slider')}
           onChange={handleVolumeChange}
           onChangeCommitted={updateVolume}
           disabled={!!volumeMute}
           marks={[ { value: maxVolume } ]}
+          size={compact ? 'small' : 'medium'}
           step={volumeStep}
           value={_volume}
           valueLabelDisplay="auto"

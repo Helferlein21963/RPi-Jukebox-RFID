@@ -2,18 +2,26 @@ import React from 'react'
 import { Route, HashRouter, Routes } from 'react-router-dom'
 
 import Cards from './components/Cards';
-import Clock from './components/Clock';
 import Import from './components/Import';
 import Library from './components/Library';
 import Navigation from './components/Navigation';
 import Player from './components/Player'
 import Settings from './components/Settings'
+import TopBar from './components/TopBar';
+import useVolumeKeys from './utils/use-volume-keys';
 
 import Grid from '@mui/material/Grid';
+
+// Volume keys of the keyboard and + / - / M change the volume of the box on every page
+const VolumeKeys = () => {
+  useVolumeKeys();
+  return null;
+};
 
 const Router = () => {
   return (
     <HashRouter>
+      <VolumeKeys />
       <Grid
         item xs={12}
         sm={12}
@@ -24,7 +32,7 @@ const Router = () => {
           overflow: 'hidden',
         }}
       >
-        <Clock />
+        <TopBar />
         <Routes>
           <Route
             index
